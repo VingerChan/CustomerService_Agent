@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import os
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 # 加载env
 load_dotenv()
@@ -14,7 +15,15 @@ llm = init_chat_model(
     base_url=os.getenv('DASHSCOPE_BASE_URL'),
 )
 
-agent = create_agent(
-    model=llm,  # 模型
-    tools=[],
-)
+agent = None
+
+def init_agent(checkpointer):
+    global agent
+    agent = create_agent(
+        llm,
+        tools=[],
+        checkpointer=checkpointer,
+    )
+
+def get_agent():
+    return agent

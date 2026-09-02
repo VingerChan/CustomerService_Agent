@@ -1,17 +1,16 @@
-from http.client import HTTPException
-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.chat import ChatResponse, ChatRequest
 from langchain.messages import HumanMessage, AIMessage
-from app.core.agent import agent
+from app.core.agent import get_agent
 
 router = APIRouter(prefix='/api', tags=['对话'])
 
 @router.post('/chat',response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, agent = Depends(get_agent)):
     try:
+        config = {'configurable': {'thread_id': request.session_id}}
         # 调用Agent 传入用户信息
-        result = agent.invoke({'messages': [HumanMessage(request.message)]})
+        result = await agent.ainvoke({'messages': [HumanMessage(request.message)]}, config=config)
         ai_message = result.get('messages', [])[-1]
         # 查看最后一条信息是否属于AIMessage
         if not isinstance(ai_message, AIMessage):
