@@ -2,7 +2,7 @@ from FlagEmbedding import BGEM3FlagModel
 from typing import Optional
 
 class EmbeddingService:
-    def __init__(self, model_name: str = 'BAAI/bge-m3', use_fp16 = True):
+    def __init__(self, model_name: str = 'D:/models/bge-m3', use_fp16 = True):
         """
         初始化BGE-M3向量化服务
         :param model_name: HuggingFace模型名称，BAAI/bge-m3是BAAI发布的多语言模型

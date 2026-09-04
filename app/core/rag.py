@@ -1,6 +1,5 @@
 import os
 from typing import Optional
-
 from dotenv import load_dotenv
 import chromadb
 
@@ -116,3 +115,4 @@ def get_vector_db() -> VectorDB:
     if _vector_db_instance is None:
         _vector_db_instance = VectorDB()
     return _vector_db_instance
+
