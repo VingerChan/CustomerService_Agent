@@ -104,6 +104,16 @@ class VectorDB:
         collection = self.get_collection(name=name)
         return collection.count()
 
+    def delete_documents(self, collection_name: str, ids: list[str]):
+        """
+        从集合中删除指定ID的文档
+        :param collection_name: 集合名称
+        :param ids: 要删除的文档ID列表
+        :return:
+        """
+        collection = self.get_or_create_collection(name=collection_name)
+        collection.delete(ids=ids)
+
 # 全局单例实例
 _vector_db_instance: Optional[VectorDB] = None
 def get_vector_db() -> VectorDB:

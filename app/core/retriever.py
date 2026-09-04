@@ -76,7 +76,7 @@ class HybridRetriever:
             if max_score == 0:
                 return [0.0] * len(scores)
             return [score / max_score for score in scores]
-        vector_scores = normalize(vector_results.get('distances', [1.0] * n_results * 2))
+        vector_scores = normalize(vector_results.get('distances', [[]])[0] if vector_results.get('distances') else [1.0] * n_results * 2)
         keyword_scores = normalize(keyword_results.get('scores', []))
         """向量检索结果"""
         doc_scores = {}
