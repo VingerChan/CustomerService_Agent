@@ -1,0 +1,26 @@
+[
+  {
+    "id": "order_query",
+    "description": "查询用户订单列表或单个订单详情",
+    "endpoint": "/api/orders/",
+    "method": "GET"
+  },
+  {
+    "id": "product_search",
+    "description": "搜索商品信息",
+    "endpoint": "/api/search/",
+    "method": "GET"
+  },
+  {
+    "id": "product_recommend",
+    "description": "获取商品推荐",
+    "endpoint": "/api/goods/recommend/",
+    "method": "GET"
+  },
+  {
+    "id": "product_detail",
+    "description": "获取商品详情信息",
+    "endpoint": "/api/goods/{sku_id}/",
+    "method": "GET"
+  }
+]
