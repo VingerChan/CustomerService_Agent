@@ -79,7 +79,7 @@ async def get_browse_history(api: str, method: str, config: RunnableConfig) -> s
         return f"获取浏览记录失败：{str(e)}"
 
 @tool
-async def search_products(api: str, params: ProductSearchParams, config: RunnableConfig) -> str:
+async def search_products(api: str, method: str, params: ProductSearchParams, config: RunnableConfig) -> str:
     """
     搜索商品信息。
 
@@ -89,6 +89,7 @@ async def search_products(api: str, params: ProductSearchParams, config: Runnabl
 
     Args:
         api: API端点路径，从map_user_intent获取，例如 "/api/search/"
+        method: HTTP请求方法，从map_user_intent获取，例如 "GET"
         params: ProductSearchParams模型，包含以下可选参数：
             - keyword: 搜索关键词（如"手机"、"笔记本"
             - category: 商品分类（如"手机"、"电脑"）
@@ -122,7 +123,7 @@ async def search_products(api: str, params: ProductSearchParams, config: Runnabl
 
 
 @tool
-async def get_order_detail(api: str, config: RunnableConfig) -> str:
+async def get_order_detail(api: str, method: str, config: RunnableConfig) -> str:
     """
     获取单个订单的详细信息。
 
@@ -131,6 +132,7 @@ async def get_order_detail(api: str, config: RunnableConfig) -> str:
 
     Args:
         api: API端点路径，从map_user_intent获取，例如 "/api/orders/{order_id}/"
+        method: HTTP请求方法，从map_user_intent获取，例如 "GET"
         config: RunnableConfig，包含用户认证token
     """
     token = config.get('configurable', {}).get('token')
@@ -168,3 +170,51 @@ async def get_order_detail(api: str, config: RunnableConfig) -> str:
         return output
     except Exception as e:
         return f"获取订单详情失败: {str(e)}"
+
+@tool
+async def get_product_detail(api: str, method: str, config: RunnableConfig) -> str:
+    """
+    获取单个商品的详细信息。
+
+    当用户询问特定商品详情、规格参数时使用此工具。
+    返回格式化的商品详情，包含名称、系列、价格、库存、销量和规格参数。
+
+    Args:
+        api: API端点路径，从map_user_intent获取，例如 "/api/goods/{sku_id}/"
+        method: HTTP请求方法，从map_user_intent获取，例如 "GET"
+        config: RunnableConfig，包含用户认证token
+    """
+    token = config.get('configurable', {}).get('token')
+    try:
+        result = await call_api(api, token=token, method=method)
+
+        product = result
+        if not product or 'name' not in product:
+            return "未找到商品信息"
+
+        price = product.get('price', 0)
+        stock = product.get('stock', 0)
+
+        # 格式化规格信息
+        specs = product.get('specs', [])
+        spec_list = []
+        for spec in specs:
+            options = [opt['value'] for opt in spec.get('options', [])]
+            spec_list.append(f"  {spec.get('name', '未知')}: {'/'.join(options)}")
+
+        # SPU信息
+        spu = product.get('spu', {})
+        spu_name = spu.get('name', '未知')
+
+        output = (
+                f"商品名称: {product.get('name', '未知')}\n"
+                f"系列: {spu_name}\n"
+                f"价格: {price}元\n"
+                f"库存: {stock}件\n"
+                f"销量: {product.get('sales', 0)}\n"
+                f"规格参数:\n" + "\n".join(spec_list)
+        )
+
+        return output
+    except Exception as e:
+        return f"获取商品详情失败: {str(e)}"
