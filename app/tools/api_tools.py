@@ -119,3 +119,52 @@ async def search_products(api: str, params: ProductSearchParams, config: Runnabl
         return f"共找到{total}件商品：\n" + "\n".join(skus_list)
     except Exception as e:
         return f"搜索商品失败：{str(e)}"
+
+
+@tool
+async def get_order_detail(api: str, config: RunnableConfig) -> str:
+    """
+    获取单个订单的详细信息。
+
+    当用户询问特定订单状态、订单详情时使用此工具。
+    返回格式化的订单详情，包含订单号、状态、支付方式、金额、时间、地址和商品列表。
+
+    Args:
+        api: API端点路径，从map_user_intent获取，例如 "/api/orders/{order_id}/"
+        config: RunnableConfig，包含用户认证token
+    """
+    token = config.get('configurable', {}).get('token')
+    try:
+        result = await call_api(api, token=token)
+
+        order = result
+        if not order or 'order_id' not in order:
+            return "未找到订单信息"
+
+        amount = order.get('final_amount', 0)
+        status_text = order.get('status_text', '未知')
+        pay_method = order.get('pay_method_text', '未知')
+
+        # 格式化商品列表
+        skus = order.get('skus', [])
+        sku_list = []
+        for sku in skus:
+            sku_list.append(
+                f"  - {sku.get('sku_name', '未知商品')}\n"
+                f"    数量: {sku.get('count', 1)}\n"
+                f"    单价: {sku.get('price', 0)}元"
+            )
+
+        output = (
+                f"订单号: {order.get('order_id', '未知')}\n"
+                f"状态: {status_text}\n"
+                f"支付方式: {pay_method}\n"
+                f"总金额: {amount}元\n"
+                f"下单时间: {order.get('create_time', '未知')}\n"
+                f"收货地址: {order.get('receiver_address', '未知')}\n"
+                f"商品列表:\n" + "\n".join(sku_list)
+        )
+
+        return output
+    except Exception as e:
+        return f"获取订单详情失败: {str(e)}"

@@ -1,8 +1,14 @@
 [
   {
     "id": "order_query",
-    "description": "查询用户订单列表或单个订单详情",
+    "description": "查询用户订单列表",
     "endpoint": "/api/orders/",
+    "method": "GET"
+  },
+  {
+    "id": "order_detail",
+    "description": "查询单个订单的详细信息，包括订单状态、支付方式、收货地址、商品列表",
+    "endpoint": "/api/orders/{order_id}/",
     "method": "GET"
   },
   {

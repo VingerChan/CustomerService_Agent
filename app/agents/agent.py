@@ -4,7 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 from app.tools.rag_tools import map_user_intent
-from app.tools.api_tools import get_orders, get_browse_history, search_products
+from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail
 
 # 加载env
 load_dotenv()
@@ -42,14 +42,17 @@ system_prompt = """
     - 订单列表：get_orders(获取订单历史，用于分析用户偏好)
     - 浏览记录：get_browse_history(获取浏览历史，用于分析用户偏好)
     - 商品搜索：search_products(支持关键词搜索、价格区间、排序)
+    - 订单详情：get_order_detail(查询单个订单的详细信息，如物流状态、支付方式、收货地址)
 4、将工具返回的结果整理后回复用户
 ## 注意事项
 - 根据API描述和用户query，判断匹配度是否合理
 - 如果用户请求不明确，先调用map_user_intent获取候选API再判断
+- 回复时只处理用户的当前请求，不要在回复中混入与当前请求无关的其他话题内容 
+- 如果用户明确要求继续之前的对话（如"继续刚才的推荐"），则可以使用上下文
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history, search_products]
+tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail]
 def init_agent(checkpointer):
     global agent
     agent = create_agent(
