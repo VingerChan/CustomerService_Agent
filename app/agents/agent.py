@@ -4,7 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 from app.tools.rag_tools import map_user_intent
-from app.tools.api_tools import get_orders
+from app.tools.api_tools import get_orders, get_browse_history
 
 # 加载env
 load_dotenv()
@@ -38,7 +38,9 @@ system_prompt = """
 2.API选择：查看返回的API列表和匹配度(score)：
     - 如果最高匹配度 >= 0.5，选择最匹配的API
     - 如果最高匹配度 < 0.5，说明用户请求与平台功能不匹配，直接回复"抱歉，我无法处理这个请求"
-3.根据API选择最适用的工具
+3.工具选择：根据选择的API，调用对应的业务工具
+    - 订单列表：get_orders(获取订单历史，用于分析用户偏好)
+    - 浏览记录：get_browse_history(获取浏览历史，用于分析用户偏好)
 4、将工具返回的结果整理后回复用户
 ## 注意事项
 - 根据API描述和用户query，判断匹配度是否合理
@@ -46,7 +48,7 @@ system_prompt = """
 """
 
 agent = None
-tools = [map_user_intent, get_orders]
+tools = [map_user_intent, get_orders, get_browse_history]
 def init_agent(checkpointer):
     global agent
     agent = create_agent(

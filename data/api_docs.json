@@ -22,5 +22,11 @@
     "description": "获取商品详情信息",
     "endpoint": "/api/goods/{sku_id}/",
     "method": "GET"
+  },
+  {
+    "id": "browse_history",
+    "description": "获取用户的浏览记录",
+    "endpoint": "/api/browse/",
+    "method": "POST"
   }
 ]

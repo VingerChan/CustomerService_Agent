@@ -41,3 +41,38 @@ async def get_orders(api: str, method: str, config: RunnableConfig) -> str:
         return f"订单列表 (共{total}条)： \n" + "\n".join(order_list)
     except Exception as e:
         return f"获取订单列表失败：{str(e)}"
+
+@tool
+async def get_browse_history(api: str, method: str, config: RunnableConfig) -> str:
+    """
+    获取用户的浏览历史记录。
+
+    当需要了解用户浏览偏好、分析用户兴趣时使用此工具。
+    返回格式化的浏览记录，按日期分组显示浏览过的商品。
+    最多返回5天的浏览记录，每天最多显示5个商品。
+
+    Args:
+        api: API端点路径，从map_user_intent获取，例如 "/api/browse/"
+        method: HTTP请求方法，从map_user_intent获取，例如 "POST"
+        config: RunnableConfig，包含用户认证token
+    """
+    token = config.get('configurable', {}).get('token')
+    try:
+        result = await call_api(api, token=token, method=method)
+        if not result:
+            return "暂无浏览记录"
+        browse_list = []
+        for record in result[:5]:
+            date = record.get('date', '未知')
+            skus = record.get('skus', [])
+            sku_list = []
+            for sku in skus[:5]:    # 每天最多显示5个商品
+                name = sku.get('name', '未知商品')
+                price = sku.get('price', 0)
+                sku_list.append(f"  - {name} ({price}元)")
+            if len(skus) > 5:
+                sku_list.append(f"  ...等{len(skus)}件商品")
+            browse_list.append(f"{date}:\n" + "\n".join(sku_list))
+        return "浏览记录：\n" + "\n".join(browse_list)
+    except Exception as e:
+        return f"获取浏览记录失败：{str(e)}"
