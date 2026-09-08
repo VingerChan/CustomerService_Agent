@@ -4,6 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 from app.tools.rag_tools import map_user_intent
+from app.tools.api_tools import get_orders
 
 # 加载env
 load_dotenv()
@@ -45,7 +46,7 @@ system_prompt = """
 """
 
 agent = None
-tools = [map_user_intent]
+tools = [map_user_intent, get_orders]
 def init_agent(checkpointer):
     global agent
     agent = create_agent(

@@ -5,7 +5,7 @@ from app.routers.chat import router as chat_router
 import os
 from dotenv import load_dotenv
 load_dotenv()
-from app.core.agent import init_agent
+from app.agents.agent import init_agent
 from app.core.intent import get_intent_mapper
 import json
 

@@ -2,7 +2,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.chat import ChatResponse, ChatRequest
 from langchain.messages import HumanMessage, AIMessage
-from app.core.agent import get_agent
+from app.agents.agent import get_agent
 from app.core.auth import get_user_info
 
 router = APIRouter(prefix='/api', tags=['对话'])
@@ -14,7 +14,7 @@ async def chat(request: ChatRequest, agent = Depends(get_agent)):
         user_id = str(user_info.get('user_id'))
         if not user_id:
             raise HTTPException(status_code=401, detail='无法获取用户信息')
-        config = {'configurable': {'thread_id': user_id}}
+        config = {'configurable': {'thread_id': user_id, 'token': request.token}}
         # 调用Agent 传入用户信息
         result = await agent.ainvoke({'messages': [HumanMessage(request.message)]}, config=config)
         ai_message = result.get('messages', [])[-1]
