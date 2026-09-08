@@ -1,6 +1,7 @@
 from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
 from app.utils.api_caller import call_api
+from app.schemas.tools import ProductSearchParams
 
 @tool
 async def get_orders(api: str, method: str, config: RunnableConfig) -> str:
@@ -76,3 +77,45 @@ async def get_browse_history(api: str, method: str, config: RunnableConfig) -> s
         return "浏览记录：\n" + "\n".join(browse_list)
     except Exception as e:
         return f"获取浏览记录失败：{str(e)}"
+
+@tool
+async def search_products(api: str, params: ProductSearchParams, config: RunnableConfig) -> str:
+    """
+    搜索商品信息。
+
+    当用户请求推荐商品、查找特定商品时使用此工具。
+    支持关键词搜索、价格区间筛选和多种排序方式。
+    返回格式化的商品列表，包含名称、价格、销量和评论数。
+
+    Args:
+        api: API端点路径，从map_user_intent获取，例如 "/api/search/"
+        params: ProductSearchParams模型，包含以下可选参数：
+            - keyword: 搜索关键词（如"手机"、"笔记本"
+            - category: 商品分类（如"手机"、"电脑"）
+            - ordering: 排序方式（comments-评论数, sales-销量, price-价格）
+            - min_price: 最低价格（如250
+            - max_price: 最高价格（如350）
+            - page: 页码（默认1）
+            - page_size: 每页数量（默认20）
+        config: RunnableConfig，包含用户认证token
+    """
+    token = config.get('configurable', {}).get('token')
+    try:
+        # 将模型实例转换为查询参数字典，跳过使用默认值的字段。
+        query_params = params.model_dump(exclude_unset=True)
+        result = await call_api(api, token=token, params=query_params)
+        skus = result.get('skus', [])
+        if not skus:
+            return "未找到相关商品"
+        skus_list = []
+        for sku in skus[:10]:    # 最多显示10个
+            skus_list.append(
+                f"- {sku.get('name', '未知商品')}\n"
+                f"  价格: {sku.get('price', 0)}元\n"
+                f"  销量: {sku.get('sales', 0)}\n"
+                f"  评论数: {sku.get('comments', 0)}"
+            )
+        total = result.get('total', len(skus))
+        return f"共找到{total}件商品：\n" + "\n".join(skus_list)
+    except Exception as e:
+        return f"搜索商品失败：{str(e)}"

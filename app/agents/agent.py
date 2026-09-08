@@ -4,7 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain.agents.middleware import SummarizationMiddleware
 from app.tools.rag_tools import map_user_intent
-from app.tools.api_tools import get_orders, get_browse_history
+from app.tools.api_tools import get_orders, get_browse_history, search_products
 
 # 加载env
 load_dotenv()
@@ -41,6 +41,7 @@ system_prompt = """
 3.工具选择：根据选择的API，调用对应的业务工具
     - 订单列表：get_orders(获取订单历史，用于分析用户偏好)
     - 浏览记录：get_browse_history(获取浏览历史，用于分析用户偏好)
+    - 商品搜索：search_products(支持关键词搜索、价格区间、排序)
 4、将工具返回的结果整理后回复用户
 ## 注意事项
 - 根据API描述和用户query，判断匹配度是否合理
@@ -48,7 +49,7 @@ system_prompt = """
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history]
+tools = [map_user_intent, get_orders, get_browse_history, search_products]
 def init_agent(checkpointer):
     global agent
     agent = create_agent(
