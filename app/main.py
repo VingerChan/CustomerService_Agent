@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.redis.aio import AsyncRedisSaver
 from app.routers.chat import router as chat_router
 import os
 from dotenv import load_dotenv
@@ -16,8 +16,13 @@ async def lifespan(app: FastAPI):
         启动时：初始化Agent、加载API文档
         关闭时：清理资源
     """
-    async with AsyncPostgresSaver.from_conn_string(conn_string=os.getenv('POSTGRESSQL_URL')) as checkpointer:
-        await checkpointer.setup()
+    # Redis Checkpointer配置(短期记忆)
+    ttl_config = {
+        'default_ttl': 1440,    # 24小时(分钟)
+        'refresh_on_read': True,    # 读取时刷新
+    }
+    async with AsyncRedisSaver.from_conn_string(os.getenv('REDIS_URL'), ttl=ttl_config) as checkpointer:
+        await checkpointer.asetup()
         init_agent(checkpointer)
         # 加载API文档到向量数据库
         intent_mapper = get_intent_mapper()
