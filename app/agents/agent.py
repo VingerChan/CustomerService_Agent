@@ -2,9 +2,11 @@ from dotenv import load_dotenv
 import os
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware
 from app.tools.rag_tools import map_user_intent
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse
+from typing import Callable, Awaitable
 
 # 加载env
 load_dotenv()
@@ -17,19 +19,40 @@ llm1 = init_chat_model(
     base_url=os.getenv('DASHSCOPE_BASE_URL'),
 )
 
-llm2 = init_chat_model(
-    model='qwen-max',
-    model_provider='openai',
-    api_key=os.getenv('DASHSCOPE_API_KEY'),
-    base_url=os.getenv('DASHSCOPE_BASE_URL'),
-)
+def trim_by_rounds(messages: list, max_rounds: int =4, include_system: bool = True) -> list:
+    """
+    按轮次裁剪对话历史，保留最近4轮对话
+    :param messages: 消息列表
+    :param max_rounds: 保留的最大轮次数
+    :param include_system: 是否保留SystemMessage
+    :return: 裁剪后的消息列表
+    """
+    system_msgs = []
+    conversation_msg = []
+    # 将系统消息SystemMessage 和 对话消息(HumanMessage、AIMessage)分开处理
+    for msg in messages:
+        if include_system and isinstance(msg, SystemMessage):
+            system_msgs.append(msg)
+        else:
+            conversation_msg.append(msg)
+    # 系统消息作为Prompt不算一轮对话
+    # 以HumanMessage作为每轮对话的起点，计算索引
+    round_starts = [i for i, msg in enumerate(conversation_msg) if isinstance(msg, HumanMessage)]
+    # 轮次未超限，返回原消息列表
+    if len(round_starts) <= max_rounds:
+        return messages
+    trimmed_conversation = conversation_msg[round_starts[-max_rounds]:]
+    return system_msgs + trimmed_conversation
 
-# 初始化中间件
-middleware = SummarizationMiddleware(
-    model=llm2,
-    trigger=('messages', 10),    # 触发时机，当消息总数超过10时，进行总结
-    keep=('messages', 1),    # 保留的会话数
-)
+@wrap_model_call
+async def trim_message_middleware(request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[ModelResponse]]):
+    messages = request.messages
+    trimmed = trim_by_rounds(messages, max_rounds=2)
+    # 如果裁剪了消息，则创建新的request对象
+    if len(trimmed) < len(messages):
+        # request.override()创建修改后的副本，不修改原对象
+        request = request.override(messages=trimmed)
+    return await handler(request)
 
 system_prompt = """
 你是一个智能客服助手。请按照以下规则处理用户请求：
@@ -60,7 +83,7 @@ def init_agent(checkpointer):
         llm1,
         tools=tools,
         checkpointer=checkpointer,
-        middleware=[middleware],
+        middleware=[trim_message_middleware],
         system_prompt=system_prompt,
     )
 

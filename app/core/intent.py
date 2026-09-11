@@ -51,13 +51,13 @@ class IntentMapper:
         results = await self.map_intent(query, n_results)
         endpoints = []
         if results and results.get('metadatas'):
-            for i, metadata in enumerate(results['metadatas'][0]):
+            for i, metadata in enumerate(results['metadatas']):
                 endpoints.append({
-                    'id': results['ids'][0][i],
+                    'id': results['ids'][i],
                     'endpoint': metadata['endpoint'],
                     'method': metadata['method'],
-                    'description': results['documents'][0][i],
-                    'score': results['scores'][0][i] if results.get('scores') else None,
+                    'description': results['documents'][i],
+                    'score': results['scores'][i] if results.get('scores') else None,
                 })
         return endpoints
 
