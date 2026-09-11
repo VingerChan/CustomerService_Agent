@@ -104,6 +104,40 @@ class VectorDB:
         collection = self.get_collection(name=name)
         return collection.count()
 
+    def get_documents_by_id(self, collection: chromadb.Collection, ids: list[str]) -> dict:
+        """
+        根据ID获取文档
+        :param collection: 目标集合
+        :param ids: 文档ID列表
+        :return: 文档数据
+        """
+        return collection.get(ids=ids)
+
+    def update_documents(
+        self,
+        collection: chromadb.Collection,
+        ids: list[str],
+        documents: Optional[list[str]] = None,
+        metadatas: Optional[list[dict]] = None,
+        embeddings: Optional[list[list[float]]] = None
+    ):
+        """
+        更新文档
+        :param collection: 目标集合
+        :param ids: 要更新的文档ID列表
+        :param documents: 新的文档内容（可选）
+        :param metadatas: 新的元数据（可选）
+        :param embeddings: 新的向量（可选）
+        """
+        update_kwargs = {"ids": ids}
+        if documents is not None:
+            update_kwargs["documents"] = documents
+        if metadatas is not None:
+            update_kwargs["metadatas"] = metadatas
+        if embeddings is not None:
+            update_kwargs["embeddings"] = embeddings
+        collection.update(**update_kwargs)
+
     def delete_documents(self, collection_name: str, ids: list[str]):
         """
         从集合中删除指定ID的文档
