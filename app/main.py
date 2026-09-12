@@ -8,6 +8,18 @@ load_dotenv()
 from app.agents.agent import init_agent
 from app.core.intent import get_intent_mapper
 import json
+from app.memory.long_term import VectorMemory
+from app.utils.summary import SummaryGenerator
+
+# 全局checkpointer实例，供chat.py使用
+_checkpointer = None
+
+def get_checkpointer():
+    """
+    获取全局checkpointer实例
+    :return:
+    """
+    return _checkpointer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,6 +28,7 @@ async def lifespan(app: FastAPI):
         启动时：初始化Agent、加载API文档
         关闭时：清理资源
     """
+    global _checkpointer
     # Redis Checkpointer配置(短期记忆)
     ttl_config = {
         'default_ttl': 1440,    # 24小时(分钟)
@@ -23,7 +36,12 @@ async def lifespan(app: FastAPI):
     }
     async with AsyncRedisSaver.from_conn_string(os.getenv('REDIS_URL'), ttl=ttl_config) as checkpointer:
         await checkpointer.asetup()
-        init_agent(checkpointer)
+        _checkpointer = checkpointer
+        # 初始化VectorMemory和SummaryGenerator(长期记忆)
+        vector_memory = VectorMemory()
+        summary_generator = SummaryGenerator(vector_memory=vector_memory, api_key=os.getenv('DASHSCOPE_API_KEY'), base_url=os.getenv('DASHSCOPE_BASE_URL'))
+
+        init_agent(checkpointer, summary_generator=summary_generator, summary_rounds=3)
         # 加载API文档到向量数据库
         intent_mapper = get_intent_mapper()
         with open('data/api_docs.json','r',encoding='utf-8') as f:

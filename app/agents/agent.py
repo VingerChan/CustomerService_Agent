@@ -5,8 +5,14 @@ from langchain.agents import create_agent
 from app.tools.rag_tools import map_user_intent
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse
+from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
 from typing import Callable, Awaitable
+from app.utils.summary import SummaryGenerator
+from langgraph.config import get_config
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 加载env
 load_dotenv()
@@ -19,7 +25,8 @@ llm1 = init_chat_model(
     base_url=os.getenv('DASHSCOPE_BASE_URL'),
 )
 
-def trim_by_rounds(messages: list, max_rounds: int =4, include_system: bool = True) -> list:
+"""短期记忆MiddleWare"""
+def trim_by_rounds(messages: list, max_rounds: int =3, include_system: bool = True) -> list:
     """
     按轮次裁剪对话历史，保留最近4轮对话
     :param messages: 消息列表
@@ -47,12 +54,66 @@ def trim_by_rounds(messages: list, max_rounds: int =4, include_system: bool = Tr
 @wrap_model_call
 async def trim_message_middleware(request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[ModelResponse]]):
     messages = request.messages
-    trimmed = trim_by_rounds(messages, max_rounds=2)
+    trimmed = trim_by_rounds(messages, max_rounds=3)
     # 如果裁剪了消息，则创建新的request对象
     if len(trimmed) < len(messages):
         # request.override()创建修改后的副本，不修改原对象
         request = request.override(messages=trimmed)
     return await handler(request)
+
+"""长期记忆middleware"""
+class LongTermMemoryMiddleware(AgentMiddleware):
+    """
+    长期记忆Middleware
+    在模型调用后检测轮次，每N轮触发摘要生成并保存到ChromaDB
+    """
+    def __init__(self, summary_generator: SummaryGenerator, summary_rounds: int =3):
+        super().__init__()
+        self.summary_generator = summary_generator
+        self.summary_rounds = summary_rounds
+        # 记录每个用户上次摘要时的轮次数，避免重复摘要
+        self._last_summary_rounds: dict[str, int] = {}
+    async def awrap_model_call(self,request: 'ModelRequest', handler: Callable[['ModelRequest'], Awaitable['ModelResponse']]) -> 'ModelResponse':
+        # 调用handler生成回复(正常流程，不干预)
+        response = await handler(request)
+        # 从config获取user_id
+        try:
+            config = get_config()
+            user_id = config.get('configurable', {}).get('thread_id')
+        except Exception as e:
+            user_id = None
+        if not user_id:
+            return response
+        # 统计当前轮次(HumanMessage数量)
+        human_count = sum(1 for msg in request.state['messages'] if isinstance(msg, HumanMessage))
+        # 检查是否需要生成摘要
+        last_round = self._last_summary_rounds.get(user_id, 0)
+        rounds_since_last = human_count - last_round
+        # 后台异步生成摘要
+        if rounds_since_last >= self.summary_rounds:
+            state_messages = list(request.state['messages'])
+            if hasattr(response, 'result') and response.result:
+                state_messages.extend(response.result)
+            messages_snapshot = state_messages
+            asyncio.create_task(self._generate_summary_safe(user_id, messages_snapshot))
+            self._last_summary_rounds[user_id] = human_count
+        return response
+
+    async def _generate_summary_safe(self, user_id: str, messages: list):
+        """
+        安全地摘要生成
+        :param user_id: 用户id
+        :param messages: 消息列表
+        :return: None
+        """
+        try:
+            await self.summary_generator.generate_and_save(
+                user_id=user_id,
+                messages=messages,
+                n_rounds=self.summary_rounds,
+            )
+        except Exception as e:
+            logger.error(f"[LongTermMemory] 摘要生成异常: {e}", exc_info=True)
 
 system_prompt = """
 你是一个智能客服助手。请按照以下规则处理用户请求：
@@ -77,13 +138,17 @@ system_prompt = """
 
 agent = None
 tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail]
-def init_agent(checkpointer):
+def init_agent(checkpointer, summary_generator = None, summary_rounds: int = 3):
     global agent
+    middleware_list = [trim_message_middleware]
+    if summary_generator is not None:
+        long_term_middleware = LongTermMemoryMiddleware(summary_generator, summary_rounds)
+        middleware_list.append(long_term_middleware)
     agent = create_agent(
         llm1,
         tools=tools,
         checkpointer=checkpointer,
-        middleware=[trim_message_middleware],
+        middleware=middleware_list,
         system_prompt=system_prompt,
     )
 
