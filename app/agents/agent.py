@@ -4,6 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from app.tools.rag_tools import map_user_intent
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
+from app.tools.memory_tools import save_user_preference
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
 from typing import Callable, Awaitable
@@ -134,10 +135,16 @@ system_prompt = """
 - 如果用户请求不明确，先调用map_user_intent获取候选API再判断
 - 回复时只处理用户的当前请求，不要在回复中混入与当前请求无关的其他话题内容 
 - 如果用户明确要求继续之前的对话（如"继续刚才的推荐"），则可以使用上下文
+## 用户偏好管理
+- 当用户在对话中明确表达个人偏好时（如"我喜欢..."、"我常用..."、"我一般买..."），
+  调用save_user_preference工具保存
+- 常见偏好键：favorite_category(商品类别)、preferred_brand(品牌)、
+  budget_range(预算)、preferred_color(颜色)、shopping_style(风格)
+- 只保存用户明确表达的偏好，不要推测
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail]
+tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference]
 def init_agent(checkpointer, summary_generator = None, summary_rounds: int = 3):
     global agent
     middleware_list = [trim_message_middleware]

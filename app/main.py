@@ -8,8 +8,8 @@ load_dotenv()
 from app.agents.agent import init_agent
 from app.core.intent import get_intent_mapper
 import json
-from app.memory.long_term import VectorMemory
 from app.utils.summary import SummaryGenerator
+from app.memory.long_term import get_vector_memory
 
 # 全局checkpointer实例，供chat.py使用
 _checkpointer = None
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
         await checkpointer.asetup()
         _checkpointer = checkpointer
         # 初始化VectorMemory和SummaryGenerator(长期记忆)
-        vector_memory = VectorMemory()
+        vector_memory = get_vector_memory()
         summary_generator = SummaryGenerator(vector_memory=vector_memory, api_key=os.getenv('DASHSCOPE_API_KEY'), base_url=os.getenv('DASHSCOPE_BASE_URL'))
 
         init_agent(checkpointer, summary_generator=summary_generator, summary_rounds=3)
