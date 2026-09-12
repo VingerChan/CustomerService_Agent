@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from app.schemas.chat import ChatResponse, ChatRequest
 from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from app.agents.agent import get_agent
-from app.core.auth import get_user_info
+from app.utils.auth import get_user_info
 from app.memory.long_term import get_vector_memory
 
 router = APIRouter(prefix='/api', tags=['对话'])

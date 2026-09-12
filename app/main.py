@@ -10,6 +10,7 @@ from app.core.intent import get_intent_mapper
 import json
 from app.utils.summary import SummaryGenerator
 from app.memory.long_term import get_vector_memory
+from app.routers.transfer import router as transfer_router
 
 # 全局checkpointer实例，供chat.py使用
 _checkpointer = None
@@ -53,6 +54,7 @@ app = FastAPI(lifespan=lifespan)
 
 # 注册路由
 app.include_router(chat_router)
+app.include_router(transfer_router)
 
 @app.get("/")
 async def root():
