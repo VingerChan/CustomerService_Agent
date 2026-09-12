@@ -5,6 +5,7 @@ from langchain.agents import create_agent
 from app.tools.rag_tools import map_user_intent
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
 from app.tools.memory_tools import save_user_preference
+from app.tools.transfer_tools import transfer_to_human, check_transfer_status, send_transfer_message, end_transfer_session
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
 from typing import Callable, Awaitable
@@ -141,10 +142,20 @@ system_prompt = """
 - 常见偏好键：favorite_category(商品类别)、preferred_brand(品牌)、
   budget_range(预算)、preferred_color(颜色)、shopping_style(风格)
 - 只保存用户明确表达的偏好，不要推测
+## 转人工客服
+- 当用户明确说"转人工"、"找人工客服"、"人工服务"、"转接人工"、"人工客服"等关键词时，
+  先调用map_user_intent获取转人工API端点，再调用transfer_to_human工具
+- 当你判断无法处理用户的问题时（如复杂投诉、特殊需求、超出平台功能范围等），
+  主动告诉用户"这个问题我可能无法完全解决，建议您转人工客服"，并询问用户是否需要转人工
+- 转人工时，将当前AI聊天历史作为参数传递，帮助人工客服了解上下文
+- 转人工后，我会退出对话，由人工客服接管
+- 用户可以使用check_transfer_status查询排队进度（需要提供会话ID）
+- 用户可以使用send_transfer_message在排队期间留言（需要提供会话ID和消息内容）
+- 用户可以使用end_transfer_session取消转人工或结束会话（需要提供会话ID）
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference]
+tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference, transfer_to_human, check_transfer_status, send_transfer_message, end_transfer_session]
 def init_agent(checkpointer, summary_generator = None, summary_rounds: int = 3):
     global agent
     middleware_list = [trim_message_middleware]
