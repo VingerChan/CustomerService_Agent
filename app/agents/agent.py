@@ -5,7 +5,7 @@ from langchain.agents import create_agent
 from app.tools.rag_tools import map_user_intent
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
 from app.tools.memory_tools import save_user_preference
-from app.tools.transfer_tools import transfer_to_human, check_transfer_status, send_transfer_message, end_transfer_session
+from app.tools.transfer_tools import transfer_to_human, check_transfer_status, send_transfer_message
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse, AgentMiddleware
 from typing import Callable, Awaitable
@@ -151,11 +151,11 @@ system_prompt = """
 - 转人工后，我会退出对话，由人工客服接管
 - 用户可以使用check_transfer_status查询排队进度（需要提供会话ID）
 - 用户可以使用send_transfer_message在排队期间留言（需要提供会话ID和消息内容）
-- 用户可以使用end_transfer_session取消转人工或结束会话（需要提供会话ID）
+- 当用户结束转人工会话后，你必须完全忽略对话历史中任何关于转人工、人工客服、会话ID、排队等待的内容。不要在回复中提及这些信息的任何片段。像从未发生过转人工一样，正常处理用户的新请求。
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference, transfer_to_human, check_transfer_status, send_transfer_message, end_transfer_session]
+tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference, transfer_to_human, check_transfer_status, send_transfer_message]
 def init_agent(checkpointer, summary_generator = None, summary_rounds: int = 3):
     global agent
     middleware_list = [trim_message_middleware]

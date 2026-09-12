@@ -30,7 +30,7 @@ async def call_api(endpoint: str, token: str, method: str = 'GET', params: dict 
                 if method.upper() == 'GET':
                     response = await client.get(url, headers=headers, params=params)
                 elif method.upper() == 'POST':
-                    response = await client.post(url, headers=headers, params=params)
+                    response = await client.post(url, headers=headers, json=params)
                 else:
                     raise ValueError(f"不支持的HTTP方法：{method}")
                 response.raise_for_status()    # HTTP状态码非2xx时抛出异常

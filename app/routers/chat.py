@@ -5,7 +5,7 @@ from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from app.agents.agent import get_agent
 from app.utils.auth import get_user_info
 from app.memory.long_term import get_vector_memory
-from app.utils.transfer_status import check_user_transfer_status
+from app.utils.transfer_status import check_user_transfer_status, save_transfer_status
 from app.utils.api_caller import call_api
 import re
 
@@ -19,17 +19,53 @@ async def chat(request: ChatRequest, agent = Depends(get_agent)):
         if not user_id:
             raise HTTPException(status_code=401, detail='无法获取用户信息')
         # 检查转人工状态
-        transfer_info = await check_user_transfer_status(user_id)
+        try:
+            transfer_info = await check_user_transfer_status(user_id)
+        except Exception:
+            transfer_info = None
         if transfer_info:
+            session_id = transfer_info['session_id']
+            transfer_token = transfer_info.get('token', request.token)
+
             if transfer_info['status'] == 'in_queue':
-                # 排队中：调用VinShop API获取排队信息返回
+                # 排队中：查询VinShop排队状态 + 转发用户消息（留言）
                 try:
-                    session_id = transfer_info['session_id']
                     queue_result = await call_api(
                         f"/api/transfer/queue-position/{session_id}/",
-                        token=transfer_info.get('token', request.token),
+                        token=transfer_token,
                         method='GET'
                     )
+                    vinshop_status = queue_result.get('status', 'in_queue')
+
+                    # 检测VinShop是否已分配客服，自动同步Redis状态
+                    if vinshop_status == 'human_active':
+                        await save_transfer_status(user_id, session_id, 'human_active', transfer_token)
+                        # 分配成功：转发消息给客服
+                        try:
+                            await call_api('/api/transfer/message/', token=transfer_token, method='POST', params={
+                                'session_id': session_id,
+                                'content': request.message,
+                                'message_type': 'text'
+                            })
+                        except Exception:
+                            pass
+                        return ChatResponse(
+                            reply="",
+                            session_id=user_id,
+                            transfer_status='active',
+                            transfer_session_id=session_id
+                        )
+
+                    # 仍在排队：转发消息作为留言
+                    try:
+                        await call_api('/api/transfer/message/', token=transfer_token, method='POST', params={
+                            'session_id': session_id,
+                            'content': request.message,
+                            'message_type': 'text'
+                        })
+                    except Exception:
+                        pass
+
                     position = queue_result.get('position', 0)
                     estimated_wait = queue_result.get('estimated_wait_seconds', 0)
                     return ChatResponse(
@@ -45,15 +81,24 @@ async def chat(request: ChatRequest, agent = Depends(get_agent)):
                         reply="您当前正在排队中，请稍后...",
                         session_id=user_id,
                         transfer_status='pending',
-                        transfer_session_id=transfer_info['session_id']
+                        transfer_session_id=session_id
                     )
+
             elif transfer_info['status'] == 'human_active':
-                # 已接通人工客服：Agent不回复
+                # 已接通人工客服：转发消息给客服，Agent不回复
+                try:
+                    await call_api('/api/transfer/message/', token=transfer_token, method='POST', params={
+                        'session_id': session_id,
+                        'content': request.message,
+                        'message_type': 'text'
+                    })
+                except Exception:
+                    pass
                 return ChatResponse(
                     reply="",
                     session_id=user_id,
                     transfer_status='active',
-                    transfer_session_id=transfer_info['session_id']
+                    transfer_session_id=session_id
                 )
 
         # ===== 无转人工标记：正常Agent处理 =====
@@ -92,7 +137,7 @@ async def chat(request: ChatRequest, agent = Depends(get_agent)):
                     break
         # 首次触发转人工时，从Agent回复文本中提取会话ID
         # 如果回复中包含"会话ID:"，提取transfer_session_id
-        if '会话ID:' in reply:
+        if transfer_status and '会话ID:' in reply:
             match = re.search(r'会话ID:\s*(hs_\w+)', reply)
             if match:
                 transfer_session_id = match.group(1)

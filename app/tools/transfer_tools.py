@@ -2,6 +2,7 @@ from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
 from app.utils.api_caller import call_api
 from app.utils.transfer_status import save_transfer_status, remove_transfer_status
+from langchain.messages import HumanMessage, AIMessage
 
 
 @tool
@@ -21,8 +22,19 @@ async def transfer_to_human(api: str, method: str, config: RunnableConfig, ai_ch
     token = config.get('configurable', {}).get('token')
     user_id = config.get('configurable', {}).get('thread_id')
     try:
+        from app.main import get_checkpointer
+        checkpointer = get_checkpointer()
+        chat_history = []
+        if checkpointer:
+            state = await checkpointer.aget({"configurable": {"thread_id": user_id}})
+            if state and 'messages' in state.get('channel_values', {}):
+                for msg in state['channel_values']['messages']:
+                    if isinstance(msg, HumanMessage):
+                        chat_history.append({"role": "user", "content": msg.content})
+                    elif isinstance(msg, AIMessage):
+                        chat_history.append({"role": "assistant", "content": msg.content})
         result = await call_api(api, token=token, method=method, params={
-            'ai_chat_history': ai_chat_history or []
+            'ai_chat_history': chat_history or []
         })
         session_id = result.get('session_id', '')
         status = result.get('status', '')
@@ -107,31 +119,3 @@ async def send_transfer_message(api: str, method: str, session_id: str, content:
         return "消息已发送，客服接入后会看到您的留言。"
     except Exception as e:
         return f"发送消息失败：{str(e)}"
-
-
-@tool
-async def end_transfer_session(api: str, method: str, session_id: str,config: RunnableConfig, reason: str = '问题已解决', ) -> str:
-    """
-    结束转人工会话。
-
-    当用户想要取消转人工或结束人工客服会话时使用此工具。
-
-    Args:
-        api: API端点路径，从map_user_intent获取，例如 "/api/transfer/end/"
-        method: HTTP请求方法，从map_user_intent获取，例如 "POST"
-        session_id: 转接会话ID
-        reason: 结束原因，默认"问题已解决"
-        config: RunnableConfig，包含用户认证token
-    """
-    token = config.get('configurable', {}).get('token')
-    user_id = config.get('configurable', {}).get('thread_id')
-    try:
-        result = await call_api(api, token=token, method=method, params={
-            'session_id': session_id,
-            'reason': reason
-        })
-        # 移除Redis中的转人工状态
-        await remove_transfer_status(user_id)
-        return f"会话已结束，原因：{reason}"
-    except Exception as e:
-        return f"结束会话失败：{str(e)}"
