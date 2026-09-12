@@ -28,8 +28,8 @@
 | 用户偏好 | 自动识别并保存用户偏好（品牌、颜色、预算等） |
 | 转人工客服 | AI 客服到人工客服的无缝转接（排队、留言、会话管理） |
 | 多轮对话 | 支持有上下文的多轮对话 |
-| 长期记忆 | 对话摘要自动保存到向量数据库，下次对话可检索历史上下文 |
-| RAG 意图识别 | 通过 RAG 技术将用户自然语言映射到对应的 API 端点 |
+| 三层记忆 | 短期记忆 + 长期记忆 + 工作记忆，实现上下文延续与历史回忆 |
+| RAG 意图识别 | 通过 RAG 技术将用户自然语言映射对应的 API 端点 |
 
 ## 架构总览
 
@@ -118,30 +118,32 @@ sequenceDiagram
     end
 ```
 
-## 记忆系统架构
+## 三层记忆架构
 
 ```mermaid
-graph LR
-    subgraph "短期记忆 (Redis DB0)"
-        R1["AsyncRedisSaver<br/>对话历史"]
-        R2["TTL: 24小时<br/>自动过期"]
-    end
-
+graph TB
     subgraph "长期记忆 (ChromaDB)"
-        C1["user_memories 集合"]
-        C2["对话摘要<br/>每3轮自动生成"]
-        C3["用户偏好<br/>显式保存"]
-        C4["30天半衰期<br/>时效性权重"]
+        LTM1["对话摘要<br/>每3轮自动生成"]
+        LTM2["用户偏好<br/>显式保存"]
+        LTM3["30天半衰期<br/>时效性权重"]
     end
 
-    subgraph "工作流"
-        A1["新对话开始"] --> A2["检索长期记忆"]
-        A2 --> A3["注入 SystemMessage"]
-        A3 --> A4["Agent 处理"]
-        A4 --> A5{"每3轮?"}
-        A5 -->|是| A6["生成摘要保存"]
-        A5 -->|否| A7["继续对话"]
+    subgraph "工作记忆 (当前上下文)"
+        WM["本次对话 messages 列表"]
+        WM1["检索的历史记忆<br/>→ SystemMessage"]
+        WM2["短期对话历史<br/>从 Redis 加载"]
     end
+
+    subgraph "短期记忆 (Redis)"
+        STM["AsyncRedisSaver<br/>裁剪保留最近3轮<br/>TTL: 24小时"]
+    end
+
+    LTM1 & LTM2 -->|"按需检索"| WM1
+    STM -->|"自动加载"| WM2
+    WM1 --> WM
+    WM2 --> WM
+    WM -->|"每3轮触发摘要"| LTM1
+    WM -->|"Agent 识别偏好"| LTM2
 ```
 
 ## 技术栈
@@ -347,10 +349,11 @@ GET /
 
 Agent 服务不解码用户 Token，仅做转发。调用 VinShop 后端 API 时携带原始 Token，由后端验证用户身份，确保安全性。
 
-### 双记忆架构
+### 三层记忆架构
 
-- **短期记忆**：Redis AsyncRedisSaver，保存对话历史，24 小时自动过期
-- **长期记忆**：ChromaDB `user_memories` 集合，保存对话摘要和用户偏好，30 天半衰期时效性权重
+- **短期记忆**：Redis AsyncRedisSaver，裁剪保留最近 3 轮对话历史，24 小时自动过期
+- **长期记忆**：ChromaDB `user_memories` 集合，保存对话摘要（每 3 轮自动生成）和用户偏好，30 天半衰期时效性权重
+- **工作记忆**：每次请求时从长期记忆中按需检索相关信息，以 SystemMessage 注入当前对话上下文供 LLM 使用
 
 ### 混合检索
 
