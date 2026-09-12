@@ -34,5 +34,29 @@
     "description": "获取用户的浏览记录",
     "endpoint": "/api/browse/",
     "method": "POST"
+  },
+  {
+    "id": "transfer_create",
+    "description": "将对话转接给人工客服，用于处理复杂问题、投诉、特殊需求或用户主动要求转人工",
+    "endpoint": "/api/transfer/create/",
+    "method": "POST"
+  },
+  {
+    "id": "transfer_queue_position",
+    "description": "查询转人工排队位置和预计等待时间",
+    "endpoint": "/api/transfer/queue-position/{session_id}/",
+    "method": "GET"
+  },
+  {
+    "id": "transfer_message",
+    "description": "在转人工排队期间发送留言给人工客服",
+    "endpoint": "/api/transfer/message/",
+    "method": "POST"
+  },
+  {
+    "id": "transfer_end",
+    "description": "结束转人工会话或取消转人工请求",
+    "endpoint": "/api/transfer/end/",
+    "method": "POST"
   }
 ]
