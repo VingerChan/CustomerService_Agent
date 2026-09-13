@@ -3,7 +3,10 @@ import os
 from dotenv import load_dotenv
 import json
 from datetime import datetime
+from app.utils.api_caller import call_api
+import logging
 
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 redis_url = os.getenv('REDIS_TRANSFER_STATUS')
@@ -59,3 +62,19 @@ async def remove_transfer_status(user_id: str):
         await redis_conn.delete(key)
     finally:
         await redis_conn.aclose()
+
+async def forward_message(session_id: str, content: str, token: str) -> None:
+    """
+    排队中，留言转发消息给人工客服
+    :param session_id: 转接会话ID
+    :param content: 消息内容
+    :param token: 用户认证token
+    """
+    try:
+        await call_api(os.getenv('TRANSFER_MESSAGE'), token=token, method='POST', params={
+            'session_id': session_id,
+            'content': content,
+            'message_type': 'text'
+        })
+    except Exception as e:
+        logger.warning(f"转发消息失败：{e}")

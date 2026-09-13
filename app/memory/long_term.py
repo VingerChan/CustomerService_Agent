@@ -44,13 +44,15 @@ class VectorMemory:
         memory_id = f"user:{user_id}:memory:{int(datetime.now().timestamp())}"
         # 使用EmbeddingService进行向量化
         embeddings = self.embedding_service.embed_documents([content])
+        now = datetime.now()
         self.vector_db.add_documents(
             collection=self.collection,
             documents=[content],
             metadatas=[{
                 "user_id": user_id,
                 "topic": topic,
-                "created_at": datetime.now().isoformat(),
+                "created_at": now.isoformat(),
+                "created_timestamp": now.timestamp(),
                 "session_id": session_id,
                 "memory_type": memory_type,
             }],
@@ -71,7 +73,7 @@ class VectorMemory:
         :return: 记忆列表，按相关性降序排列
         """
         # 时间边界，当前时间 - 最大时间
-        cutoff_date = (datetime.now() - timedelta(days=max_age_days)).isoformat()
+        cutoff_timestamp = (datetime.now() - timedelta(days=max_age_days)).timestamp()
         # 只检索时间边界之后创建的记忆，90天前的旧记忆会被过滤掉
         # 使用EmbeddingService进行查询向量化
         query_embedding = self.embedding_service.embed_query(query)
@@ -82,7 +84,7 @@ class VectorMemory:
             where={
                 "$and": [
                     {"user_id": user_id},
-                    {"created_at": {"$gte": cutoff_date}}
+                    {"created_timestamp": {"$gte": cutoff_timestamp}}
                 ]
             }
         )
@@ -127,6 +129,7 @@ class VectorMemory:
         existing = self.vector_db.get_documents_by_id(self.collection, [memory_id])
         # 使用EmbeddingService进行向量化
         embeddings = self.embedding_service.embed_documents([f"{preference_key}: {preference_value}"])
+        now = datetime.now()
         # 已存在：更新文档内容和元数据
         if existing and existing["ids"]:
             self.vector_db.update_documents(
@@ -136,7 +139,8 @@ class VectorMemory:
                 metadatas=[{
                     "user_id": user_id,
                     "topic": "user_preference",
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": now.isoformat(),
+                    "created_timestamp": now.timestamp(),
                     "memory_type": "user_preference",
                     "preference_key": preference_key,
                 }],
@@ -149,7 +153,8 @@ class VectorMemory:
                 metadatas=[{
                     "user_id": user_id,
                     "topic": "user_preference",
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": now.isoformat(),
+                    "created_timestamp": now.timestamp(),
                     "memory_type": "user_preference",
                     "preference_key": preference_key,
                 }],
