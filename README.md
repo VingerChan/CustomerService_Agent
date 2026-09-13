@@ -21,6 +21,7 @@
 
 | 功能 | 说明 |
 |------|------|
+| 流式输出 | SSE 流式返回 Agent 回复，实时响应用户 |
 | 订单查询 | 通过自然语言查询订单列表和订单详情 |
 | 商品搜索 | 支持关键词搜索、价格区间筛选、排序 |
 | 商品详情 | 获取商品规格、库存、价格等详细信息 |
@@ -93,6 +94,7 @@ graph TB
 sequenceDiagram
     participant U as 用户
     participant API as FastAPI
+    participant Handler as chat_handler
     participant Agent as LangChain Agent
     participant RAG as RAG Engine
     participant Tools as 业务工具
@@ -103,18 +105,22 @@ sequenceDiagram
     API->>API: 检查 Redis 转人工状态
 
     alt 已转人工
-        API-->>U: 返回排队/转发消息
+        Handler->>Handler: 处理排队/转发消息
+        Handler-->>U: 返回 JSON (非流式)
     else 正常对话
-        API->>RAG: 检索长期记忆 (ChromaDB)
-        RAG-->>API: 返回相关历史记忆
-        API->>Agent: 调用 Agent (携带记忆上下文)
+        Handler->>RAG: 检索长期记忆 (ChromaDB)
+        RAG-->>Handler: 返回相关历史记忆
+        Handler->>Agent: 流式调用 Agent (携带记忆上下文)
+        loop 流式输出
+            Agent-->>Handler: 文本片段 (AIMessageChunk)
+            Handler-->>U: SSE: {"type":"text","content":"..."}
+        end
         Agent->>Agent: 意图识别 (map_user_intent)
         Agent->>Tools: 调用业务工具
         Tools->>VinShop: HTTP 调用平台 API
         VinShop-->>Tools: 返回业务数据
         Tools-->>Agent: 返回工具结果
-        Agent-->>API: 生成回复
-        API-->>U: 返回 ChatResponse
+        Handler-->>U: SSE: {"type":"done"}
     end
 ```
 
@@ -171,6 +177,7 @@ CustomerService_Agent/
 │   ├── agents/
 │   │   └── agent.py                # Agent 创建、System Prompt、Middleware
 │   ├── core/
+│   │   ├── chat_handler.py         # 业务编排层（转人工 + 流式Agent调用）
 │   │   ├── rag.py                  # ChromaDB 向量数据库封装（单例）
 │   │   ├── embedding.py            # BGE-M3 向量化服务（单例）
 │   │   ├── retriever.py            # 混合检索器（向量 + BM25）
@@ -193,6 +200,7 @@ CustomerService_Agent/
 │   └── utils/
 │       ├── api_caller.py           # 通用 HTTP 调用（httpx + 重试）
 │       ├── auth.py                 # Token 转发认证
+│       ├── message_utils.py        # 工具函数（记忆检索/消息构建/会话ID提取）
 │       ├── summary.py              # 对话摘要生成器
 │       └── transfer_status.py      # Redis 转人工状态管理
 ├── data/
@@ -238,9 +246,11 @@ pip install -e .
 DASHSCOPE_API_KEY=your_api_key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
-# VinShop 后端 API
+# 平台后端 API
 BASE_URL=http://your-shop-api-host:port
-USER_API=/api/user/info
+USER_API=/api/your-api-endpoint
+TRANSFER_MESSAGE=/api/your-transfer-message-endpoint
+TRANSFER_QUEUE=/api/your-transfer-queue-endpoint/{session_id}
 
 # Redis
 REDIS_URL=redis://localhost:6379/0
@@ -284,16 +294,28 @@ POST /api/chat
 | message | string | 是 | 用户输入的消息 |
 | token | string | 是 | 用户认证 token |
 
-**响应体：**
+**响应体（正常对话 — SSE 流式）：**
+
+返回 `Content-Type: text/event-stream`，每个事件以 `data: ` 开头，JSON 格式：
+
+| type 字段 | 说明 |
+|-----------|------|
+| text | Agent 回复文本片段，content 为文本内容 |
+| transfer | 转人工触发，status 为 pending，session_id 为会话 ID |
+| done | 流结束信号 |
+
+**响应体（转人工拦截时 — JSON）：**
+
+当用户已处于排队/人工服务状态时，直接返回 JSON（非流式）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| reply | string | Agent 生成的回复 |
+| reply | string | 回复内容 |
 | session_id | string | 会话 ID（user_id） |
-| transfer_status | string | 转人工状态：null / pending / active |
-| transfer_session_id | string | 转人工会话 ID（仅转人工时有值） |
+| transfer_status | string | 转人工状态：pending / active |
+| transfer_session_id | string | 转人工会话 ID |
 
-**示例：**
+**SSE 流式示例：**
 
 ```bash
 curl -X POST http://localhost:8000/api/chat \
@@ -301,12 +323,36 @@ curl -X POST http://localhost:8000/api/chat \
   -d '{"message": "帮我查一下订单", "token": "Bearer <user_token>"}'
 ```
 
-```json
-{
-  "reply": "以下是您的订单列表：...",
-  "session_id": "12345",
-  "transfer_status": null,
-  "transfer_session_id": null
+```
+data: {"type": "text", "content": "您好"}
+data: {"type": "text", "content": "，正在为您查询订单..."}
+data: {"type": "done"}
+```
+
+**前端接收示例：**
+
+```javascript
+const response = await fetch('/api/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ message: '帮我查一下订单', token: 'xxx' })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const text = decoder.decode(value, { stream: true });
+  for (const line of text.split('\n')) {
+    if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.slice(6));
+      if (data.type === 'text') appendToChatBox(data.content);
+      if (data.type === 'transfer') showTransferPrompt(data.session_id);
+      if (data.type === 'done') reader.cancel();
+    }
+  }
 }
 ```
 
