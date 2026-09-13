@@ -1,5 +1,5 @@
-from app.core.updater import get_updater
-from app.core.retriever import get_retriever
+from app.rag.updater import get_updater
+from app.rag.retriever import get_retriever
 from typing import Optional
 
 class IntentMapper:

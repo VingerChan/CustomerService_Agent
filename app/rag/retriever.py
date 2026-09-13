@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional
-from app.core.embedding import get_embedding_service
-from app.core.rag import get_vector_db
+from app.rag.embedding import get_embedding_service
+from app.rag.rag import get_vector_db
 import jieba
 from rank_bm25 import BM25Okapi
 

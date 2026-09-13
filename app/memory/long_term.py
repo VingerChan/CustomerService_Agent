@@ -1,5 +1,5 @@
-from app.core.rag import get_vector_db
-from app.core.embedding import get_embedding_service
+from app.rag.rag import get_vector_db
+from app.rag.embedding import get_embedding_service
 from datetime import datetime, timedelta
 
 class VectorMemory:

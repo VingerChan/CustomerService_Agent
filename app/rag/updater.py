@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
-from app.core.embedding import get_embedding_service
-from app.core.rag import get_vector_db
+from app.rag.embedding import get_embedding_service
+from app.rag.rag import get_vector_db
 import logging
 import asyncio
 from typing import Optional
