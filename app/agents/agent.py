@@ -21,7 +21,7 @@ load_dotenv()
 
 # 初始化大模型
 llm1 = init_chat_model(
-    model='qwen3.5-plus',
+    model=os.getenv('LLM_MODEL'),
     model_provider='openai',
     api_key=os.getenv('DASHSCOPE_API_KEY'),
     base_url=os.getenv('DASHSCOPE_BASE_URL'),

@@ -1,25 +1,25 @@
 [
   {
     "id": "order_query",
-    "description": "查询用户订单列表",
+    "description": "查询我的订单列表、查看我的订单、最近的订单、历史订单、我买过的东西",
     "endpoint": "/api/orders/",
     "method": "GET"
   },
   {
     "id": "order_detail",
-    "description": "查询单个订单的详细信息，包括订单状态、支付方式、收货地址、商品列表",
+    "description": "查看某个订单详情、查询订单物流、查看订单状态、订单详情、这个订单的情况",
     "endpoint": "/api/orders/{order_id}/",
     "method": "GET"
   },
   {
     "id": "product_search",
-    "description": "搜索商品信息",
+    "description": "搜索商品、查找商品、有没有XXX商品、找一下XXX",
     "endpoint": "/api/search/",
     "method": "GET"
   },
   {
     "id": "product_recommend",
-    "description": "获取商品推荐",
+    "description": "推荐商品、有什么推荐、推荐一款手机、给我推荐、有什么好东西",
     "endpoint": "/api/goods/recommend/",
     "method": "GET"
   },
@@ -37,7 +37,7 @@
   },
   {
     "id": "transfer_create",
-    "description": "将对话转接给人工客服，用于处理复杂问题、投诉、特殊需求或用户主动要求转人工",
+    "description": "转人工、转人工客服、找人工客服、人工服务、转接人工、需要人工帮助",
     "endpoint": "/api/transfer/create/",
     "method": "POST"
   },
@@ -51,12 +51,6 @@
     "id": "transfer_message",
     "description": "在转人工排队期间发送留言给人工客服",
     "endpoint": "/api/transfer/message/",
-    "method": "POST"
-  },
-  {
-    "id": "transfer_end",
-    "description": "结束转人工会话或取消转人工请求",
-    "endpoint": "/api/transfer/end/",
     "method": "POST"
   }
 ]

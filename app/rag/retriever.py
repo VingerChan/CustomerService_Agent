@@ -53,7 +53,7 @@ class HybridRetriever:
                 'scores' : [float(scores[i]) for i in top_indices]
             }
         return await asyncio.to_thread(_sync_search)
-    async def hybrid_search(self, collection_name: str, query: str, n_results: int = 5, vector_weight: float = 0.7, keyword_weight: float = 0.3) -> dict:
+    async def hybrid_search(self, collection_name: str, query: str, n_results: int = 5, vector_weight: float = 0.6, keyword_weight: float = 0.4) -> dict:
         """
         混合检索
         :param collection_name: 集合名称
@@ -76,7 +76,10 @@ class HybridRetriever:
             if max_score == 0:
                 return [0.0] * len(scores)
             return [score / max_score for score in scores]
-        vector_scores = normalize(vector_results.get('distances', [[]])[0] if vector_results.get('distances') else [1.0] * n_results * 2)
+        raw_distances = vector_results.get('distances', [[]])[0] if vector_results.get(
+            'distances') else [1.0] * n_results * 2
+        vector_similarities = [1.0 - d / 2.0 for d in raw_distances]
+        vector_scores = normalize(vector_similarities)
         keyword_scores = normalize(keyword_results.get('scores', []))
         """向量检索结果"""
         doc_scores = {}
