@@ -18,12 +18,6 @@
     "method": "GET"
   },
   {
-    "id": "product_recommend",
-    "description": "推荐商品、有什么推荐、推荐一款手机、给我推荐、有什么好东西",
-    "endpoint": "/api/goods/recommend/",
-    "method": "GET"
-  },
-  {
     "id": "product_detail",
     "description": "获取商品详情信息",
     "endpoint": "/api/goods/{sku_id}/",
@@ -33,7 +27,7 @@
     "id": "browse_history",
     "description": "获取用户的浏览记录",
     "endpoint": "/api/browse/",
-    "method": "POST"
+    "method": "GET"
   },
   {
     "id": "transfer_create",

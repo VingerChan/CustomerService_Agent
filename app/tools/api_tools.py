@@ -87,14 +87,18 @@ async def search_products(api: str, method: str, params: ProductSearchParams, co
     支持关键词搜索、价格区间筛选和多种排序方式。
     返回格式化的商品列表，包含名称、价格、销量和评论数。
 
+    使用场景：
+    - 如果用户明确指定搜索关键词（如"搜索iPhone 15"），直接调用此工具
+    - 如果用户请求推荐（如"给我推荐一个商品"），建议先调用get_browse_history和get_orders分析用户喜好，再基于分析结果传入合适的keyword/category/min_price/max_price参数
+
     Args:
         api: API端点路径，从map_user_intent获取，例如 "/api/search/"
         method: HTTP请求方法，从map_user_intent获取，例如 "GET"
         params: ProductSearchParams模型，包含以下可选参数：
-            - keyword: 搜索关键词（如"手机"、"笔记本"
+            - keyword: 搜索关键词（如"手机"、"笔记本"）
             - category: 商品分类（如"手机"、"电脑"）
             - ordering: 排序方式（comments-评论数, sales-销量, price-价格）
-            - min_price: 最低价格（如250
+            - min_price: 最低价格（如250）
             - max_price: 最高价格（如350）
             - page: 页码（默认1）
             - page_size: 每页数量（默认20）
