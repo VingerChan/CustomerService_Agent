@@ -1,15 +1,14 @@
-from redis.asyncio import Redis
 import os
 from dotenv import load_dotenv
 import json
 from datetime import datetime
 from app.utils.api_caller import call_api
+from app.config.redis_conf import get_redis
 import logging
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-redis_url = os.getenv('REDIS_TRANSFER_STATUS')
 
 
 async def check_user_transfer_status(user_id: str) -> dict | None:
@@ -18,15 +17,13 @@ async def check_user_transfer_status(user_id: str) -> dict | None:
     :param user_id: 用户ID
     :return:
     """
-    redis_conn = Redis.from_url(redis_url)
-    try:
-        key = f"transfer:{user_id}"
-        data = await redis_conn.get(key)
-        if not data:
-            return None
-        return json.loads(data)
-    finally:
-        await redis_conn.aclose()
+    client = get_redis(db=1)
+    key = f"transfer:{user_id}"
+    data = await client.get(key)
+    if not data:
+        return None
+    return json.loads(data)
+
 
 async def save_transfer_status(user_id: str, session_id: str, status: str, token: str = None):
     """
@@ -37,18 +34,16 @@ async def save_transfer_status(user_id: str, session_id: str, status: str, token
     :param token: 用户认证token
     :return:
     """
-    redis_conn = Redis.from_url(redis_url)
-    try:
-        key = f"transfer:{user_id}"
-        data = {
-            'session_id': session_id,
-            'status': status,
-            'token': token,
-            'created_at': datetime.now().isoformat()
-        }
-        await redis_conn.set(key, json.dumps(data), ex=1800)    # 30分钟
-    finally:
-        await redis_conn.aclose()
+    client = get_redis(db=1)
+    key = f"transfer:{user_id}"
+    data = {
+        'session_id': session_id,
+        'status': status,
+        'token': token,
+        'created_at': datetime.now().isoformat()
+    }
+    await client.set(key, json.dumps(data), ex=1800)    # 30分钟
+
 
 async def remove_transfer_status(user_id: str):
     """
@@ -56,12 +51,10 @@ async def remove_transfer_status(user_id: str):
     :param user_id: 用户ID
     :return:
     """
-    redis_conn = Redis.from_url(redis_url)
-    try:
-        key = f"transfer:{user_id}"
-        await redis_conn.delete(key)
-    finally:
-        await redis_conn.aclose()
+    client = get_redis(db=1)
+    key = f"transfer:{user_id}"
+    await client.delete(key)
+
 
 async def forward_message(session_id: str, content: str, token: str) -> None:
     """

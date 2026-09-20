@@ -12,6 +12,7 @@ from app.utils.summary import SummaryGenerator
 from app.memory.long_term import get_vector_memory
 from app.routers.transfer import router as transfer_router
 from app.rag.knowledge_base import get_knowledge_base
+from app.config.redis_conf import close_all
 
 # 全局checkpointer实例，供chat.py使用
 _checkpointer = None
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
         'default_ttl': 1440,    # 24小时(分钟)
         'refresh_on_read': True,    # 读取时刷新
     }
-    async with AsyncRedisSaver.from_conn_string(os.getenv('REDIS_URL'), ttl=ttl_config) as checkpointer:
+    async with AsyncRedisSaver.from_conn_string(os.getenv('REDIS_BASE_URL') + '/0', ttl=ttl_config) as checkpointer:
         await checkpointer.asetup()
         _checkpointer = checkpointer
         # 初始化VectorMemory和SummaryGenerator(长期记忆)
@@ -58,6 +59,8 @@ async def lifespan(app: FastAPI):
         )
         print(f"已加载知识库: FAQ {kb_stats['faq']} 条, 政策 {kb_stats['policy']} 条")
         yield    # 应用开始接收请求
+        # 关闭Redis连接池
+        await close_all()
 app = FastAPI(lifespan=lifespan)
 
 # 注册路由
