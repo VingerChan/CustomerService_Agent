@@ -2,3 +2,6 @@
 __pycache__/
 .venv/
 *.idea/*
+.langgraph_api/
+logs/
+vectordb/

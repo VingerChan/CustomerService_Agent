@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import os
 from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
-from app.tools.rag_tools import map_user_intent
+from app.tools.rag_tools import map_user_intent, search_knowledge_base
 from app.tools.api_tools import get_orders, get_browse_history, search_products, get_order_detail, get_product_detail
 from app.tools.memory_tools import save_user_preference
 from app.tools.transfer_tools import transfer_to_human, check_transfer_status, send_transfer_message
@@ -131,6 +131,14 @@ system_prompt = """
     - 订单详情：get_order_detail(查询单个订单的详细信息，如物流状态、支付方式、收货地址)
     - 商品详情：get_product_detail(查询单个商品的详细信息，如规格参数、库存、价格) 
 4、将工具返回的结果整理后回复用户
+## 知识库查询（FAQ和平台政策）
+- 当用户询问以下类型问题时，使用 search_knowledge_base 工具：
+  * 平台政策、规则、条款相关问题
+  * 常见问题解答（如：如何注册、如何退货、运费多少等）
+  * 退换货政策、配送规则、支付方式等
+  * 账户安全、隐私政策相关
+- 检索结果会包含FAQ答案或政策条款，请基于检索结果准确回答
+- 如果知识库中没有相关信息，再尝试通过API工具处理或告知用户
 ## 注意事项
 - 根据API描述和用户query，判断匹配度是否合理
 - 如果用户请求不明确，先调用map_user_intent获取候选API再判断
@@ -155,7 +163,7 @@ system_prompt = """
 """
 
 agent = None
-tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference, transfer_to_human, check_transfer_status, send_transfer_message]
+tools = [map_user_intent, get_orders, get_browse_history, search_products, get_order_detail, get_product_detail, save_user_preference, transfer_to_human, check_transfer_status, send_transfer_message, search_knowledge_base]
 def init_agent(checkpointer, summary_generator = None, summary_rounds: int = 3):
     global agent
     middleware_list = [trim_message_middleware]

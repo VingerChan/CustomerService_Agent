@@ -11,6 +11,7 @@ import json
 from app.utils.summary import SummaryGenerator
 from app.memory.long_term import get_vector_memory
 from app.routers.transfer import router as transfer_router
+from app.rag.knowledge_base import get_knowledge_base
 
 # 全局checkpointer实例，供chat.py使用
 _checkpointer = None
@@ -49,6 +50,13 @@ async def lifespan(app: FastAPI):
             api_docs = json.load(f)
         count = await intent_mapper.load_api_docs(api_docs)
         print(f"已加载 {count} 条API文档到向量数据库")
+        # 加载知识库文档(FAQ和平台政策)
+        knowledge_base = get_knowledge_base()
+        kb_stats = await knowledge_base.load_documents(
+            faq_path='data/FAQ.md',
+            policy_path='data/Platform_Policy.md',
+        )
+        print(f"已加载知识库: FAQ {kb_stats['faq']} 条, 政策 {kb_stats['policy']} 条")
         yield    # 应用开始接收请求
 app = FastAPI(lifespan=lifespan)
 

@@ -1,5 +1,6 @@
 from langchain.tools import tool
 from app.core.intent import get_intent_mapper
+from app.rag.knowledge_base import get_knowledge_base
 
 @tool
 async def map_user_intent(query: str) -> str:
@@ -27,3 +28,18 @@ async def map_user_intent(query: str) -> str:
         return "未匹配到相关API端点"
     except Exception as e:
         return f"意图映射失败：{str(e)}"
+
+
+@tool
+async def search_knowledge_base(query: str) -> str:
+    """
+    搜索知识库(FAQ和平台政策)
+
+    当用户询问关于平台政策、使用规则、退换货政策、配送规则、账户注册、支付方式、售后服务等问题时，使用此工具获取准确信息。
+
+    Args:
+        query: 用户的问题或搜索关键词
+    """
+    knowledge_base = get_knowledge_base()
+    results = await knowledge_base.get_formatted_results(query, n_results=3)
+    return results

@@ -76,6 +76,7 @@ class HybridRetriever:
             if max_score == 0:
                 return [0.0] * len(scores)
             return [score / max_score for score in scores]
+        # 将ChromaDB返回的距离转换为相似度，再归一化
         raw_distances = vector_results.get('distances', [[]])[0] if vector_results.get(
             'distances') else [1.0] * n_results * 2
         vector_similarities = [1.0 - d / 2.0 for d in raw_distances]

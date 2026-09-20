@@ -18,7 +18,7 @@ class UpdateStats:
     def __init__(self):
         self.total: int = 0
         self.success: int = 0
-        self.fail: int = 0
+        self.failed: int = 0
         self.skipped: int = 0
         self.start_time: float = 0
         self.end_time: float = 0
@@ -33,7 +33,7 @@ class UpdateStats:
         return {
             'total': self.total,
             'success': self.success,
-            'failed': self.fail,
+            'failed': self.failed,
             'skipped': self.skipped,
             'duration': round(self.duration, 2),
             'timestamp': datetime.now().isoformat()

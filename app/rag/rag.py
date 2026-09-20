@@ -22,13 +22,14 @@ class VectorDB:
     def get_or_create_collection(self, name: str, metadata: Optional[dict] = None) -> chromadb.Collection:    # ChromaDB中的Collection相当于关系型数据库中的表
         """
         获取或创建集合
-        :param name: 集合名称，如products、api_docs
-        :param metadata: 集合元数据，可指定距离
+        :param name: 集合名级称，如products、api_docs
+        :param metadata: 集合元数据，影响整个集合的检索行为
         :return:
         """
         if metadata is None:
             # 指定HNSW索引的距离算法
             # cosine：余弦相似度，适合文本语义匹配  l2：欧氏距离，适合数据特征  ip：内积，适合推荐系统
+            # hnsw:space参数：指定HNSW索引使用哪种距离算法来计算向量之间的相似度。
             metadata = {'hnsw:space': 'cosine'}
         return self.client.get_or_create_collection(name=name, metadata=metadata)
     def add_documents(self,collection: chromadb.Collection, documents: list[str], metadatas: list[dict], ids: list[str], embeddings: Optional[list[list[float]]] = None):
