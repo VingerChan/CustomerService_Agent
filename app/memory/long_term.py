@@ -1,3 +1,4 @@
+import asyncio
 from app.rag.rag import get_vector_db
 from app.rag.embedding import get_embedding_service
 from datetime import datetime, timedelta
@@ -42,23 +43,24 @@ class VectorMemory:
         """
         """保存记忆到向量库（使用BGE-M3向量化）"""
         memory_id = f"user:{user_id}:memory:{int(datetime.now().timestamp())}"
-        # 使用EmbeddingService进行向量化
-        embeddings = self.embedding_service.embed_documents([content])
         now = datetime.now()
-        self.vector_db.add_documents(
-            collection=self.collection,
-            documents=[content],
-            metadatas=[{
-                "user_id": user_id,
-                "topic": topic,
-                "created_at": now.isoformat(),
-                "created_timestamp": now.timestamp(),
-                "session_id": session_id,
-                "memory_type": memory_type,
-            }],
-            ids=[memory_id],
-            embeddings=embeddings
-        )
+        def _sync_save():
+            embeddings = self.embedding_service.embed_documents([content])
+            self.vector_db.add_documents(
+                collection=self.collection,
+                documents=[content],
+                metadatas=[{
+                    "user_id": user_id,
+                    "topic": topic,
+                    "created_at": now.isoformat(),
+                    "created_timestamp": now.timestamp(),
+                    "session_id": session_id,
+                    "memory_type": memory_type,
+                }],
+                ids=[memory_id],
+                embeddings=embeddings
+            )
+        await asyncio.to_thread(_sync_save)
         return memory_id
 
     async def search_memory(self, user_id: str, query: str, n_results: int = 5, max_age_days: int = 90) -> list[dict]:
@@ -75,19 +77,20 @@ class VectorMemory:
         # 时间边界，当前时间 - 最大时间
         cutoff_timestamp = (datetime.now() - timedelta(days=max_age_days)).timestamp()
         # 只检索时间边界之后创建的记忆，90天前的旧记忆会被过滤掉
-        # 使用EmbeddingService进行查询向量化
-        query_embedding = self.embedding_service.embed_query(query)
-        results = self.vector_db.query(
-            collection=self.collection,
-            query_embedding=query_embedding,
-            n_results=n_results,
-            where={
-                "$and": [
-                    {"user_id": user_id},
-                    {"created_timestamp": {"$gte": cutoff_timestamp}}
-                ]
-            }
-        )
+        def _sync_search():
+            query_embedding = self.embedding_service.embed_query(query)
+            return self.vector_db.query(
+                collection=self.collection,
+                query_embedding=query_embedding,
+                n_results=n_results,
+                where={
+                    "$and": [
+                        {"user_id": user_id},
+                        {"created_timestamp": {"$gte": cutoff_timestamp}}
+                    ]
+                }
+            )
+        results = await asyncio.to_thread(_sync_search)
 
         memories = []
         if results and results.get("documents"):    # 检查结果是否有效
@@ -126,41 +129,41 @@ class VectorMemory:
         :return: None
         """
         memory_id = f"user:{user_id}:preference:{preference_key}"
-        existing = self.vector_db.get_documents_by_id(self.collection, [memory_id])
-        # 使用EmbeddingService进行向量化
-        embeddings = self.embedding_service.embed_documents([f"{preference_key}: {preference_value}"])
         now = datetime.now()
-        # 已存在：更新文档内容和元数据
-        if existing and existing["ids"]:
-            self.vector_db.update_documents(
-                collection=self.collection,
-                ids=[memory_id],
-                documents=[f"{preference_key}: {preference_value}"],
-                metadatas=[{
-                    "user_id": user_id,
-                    "topic": "user_preference",
-                    "created_at": now.isoformat(),
-                    "created_timestamp": now.timestamp(),
-                    "memory_type": "user_preference",
-                    "preference_key": preference_key,
-                }],
-                embeddings=embeddings
-            )
-        else:    # 新增文档
-            self.vector_db.add_documents(
-                collection=self.collection,
-                documents=[f"{preference_key}: {preference_value}"],
-                metadatas=[{
-                    "user_id": user_id,
-                    "topic": "user_preference",
-                    "created_at": now.isoformat(),
-                    "created_timestamp": now.timestamp(),
-                    "memory_type": "user_preference",
-                    "preference_key": preference_key,
-                }],
-                ids=[memory_id],
-                embeddings=embeddings
-            )
+        def _sync_update():
+            existing = self.vector_db.get_documents_by_id(self.collection, [memory_id])
+            embeddings = self.embedding_service.embed_documents([f"{preference_key}: {preference_value}"])
+            if existing and existing["ids"]:
+                self.vector_db.update_documents(
+                    collection=self.collection,
+                    ids=[memory_id],
+                    documents=[f"{preference_key}: {preference_value}"],
+                    metadatas=[{
+                        "user_id": user_id,
+                        "topic": "user_preference",
+                        "created_at": now.isoformat(),
+                        "created_timestamp": now.timestamp(),
+                        "memory_type": "user_preference",
+                        "preference_key": preference_key,
+                    }],
+                    embeddings=embeddings
+                )
+            else:    # 新增文档
+                self.vector_db.add_documents(
+                    collection=self.collection,
+                    documents=[f"{preference_key}: {preference_value}"],
+                    metadatas=[{
+                        "user_id": user_id,
+                        "topic": "user_preference",
+                        "created_at": now.isoformat(),
+                        "created_timestamp": now.timestamp(),
+                        "memory_type": "user_preference",
+                        "preference_key": preference_key,
+                    }],
+                    ids=[memory_id],
+                    embeddings=embeddings
+                )
+        await asyncio.to_thread(_sync_update)
 
 _vector_memory_instance = None
 

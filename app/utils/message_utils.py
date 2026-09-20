@@ -36,10 +36,10 @@ def build_messages(memories: list, user_message: str) -> list:
     if memories:
         memory_lines = []
         for m in memories:
-            score_info = f"匹配度:{m.get('similarity', 0):.2f} 时间衰减:{m.get('time_decay', 0):.2f} 综合分:{m.get('score', 0):.2f}"
-            memory_lines.append(f"- [{m['topic']}] {m['content']} ({score_info})")
+            score_info = f"相关度:{m.get('score', 0):.2f}"
+            memory_lines.append(f"- {m['content']} ({score_info})")
         memory_text = '\n'.join(memory_lines)
-        messages.append(SystemMessage(content=f"以下是用户的历史记忆（已按相关性和时效性排序）：\n{memory_text}"))
+        messages.append(SystemMessage(content=f"【用户历史数据】（仅供参考，不影响工具调用流程）\n{memory_text}"))
     messages.append(HumanMessage(content=user_message))
     return messages
 

@@ -5,6 +5,7 @@ from app.utils.auth import get_user_info
 from app.utils.transfer_status import check_user_transfer_status
 from app.core.chat_handler import handle_transfer, stream_agent_response
 from starlette.responses import JSONResponse, StreamingResponse
+from app.config.rate_limit import enforce_chat_rate_limit
 
 router = APIRouter(prefix='/api', tags=['对话'])
 
@@ -18,8 +19,9 @@ async def chat(request: ChatRequest, agent=Depends(get_agent)):
         raise HTTPException(status_code=401, detail='token无效或已过期')
     if not user_id:
         raise HTTPException(status_code=401, detail='无法获取用户信息')
-
-    # 2. 检查转人工状态（非流式拦截）
+    # 2.限流检查
+    await enforce_chat_rate_limit(user_id)
+    # 3. 检查转人工状态（非流式拦截）
     try:
         transfer_info = await check_user_transfer_status(user_id)
     except Exception:
@@ -30,7 +32,7 @@ async def chat(request: ChatRequest, agent=Depends(get_agent)):
         if result is not None:
             return JSONResponse(content=result.model_dump())
 
-    # 3. 正常对话流程（流式返回）
+    # 4. 正常对话流程（流式返回）
     return StreamingResponse(
         stream_agent_response(user_id, request.token, request.message, agent),
         media_type="text/event-stream",
