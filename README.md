@@ -31,6 +31,9 @@
 | 多轮对话 | 支持有上下文的多轮对话 |
 | 三层记忆 | 短期记忆 + 长期记忆 + 工作记忆，实现上下文延续与历史回忆 |
 | RAG 意图识别 | 通过 RAG 技术将用户自然语言映射对应的 API 端点 |
+| 知识库检索 | FAQ 与平台政策知识库，支持语义搜索与混合检索 |
+| Prompt 注入防护 | 输入清洗、API 白名单验证、记忆内容过滤 |
+| API 速率限制 | 按用户 ID 滑动窗口限流（默认 10 次/分钟） |
 
 ## 架构总览
 
@@ -41,6 +44,8 @@ graph TB
     subgraph "FastAPI Server"
         Chat["/api/chat<br/>对话接口"]
         Transfer["/api/transfer<br/>转人工接口"]
+        Sanitizer["输入防护<br/>注入检测 + 清洗"]
+        RateLimit["速率限制<br/>滑动窗口"]
     end
 
     subgraph "Agent Core"
@@ -51,6 +56,7 @@ graph TB
 
     subgraph "Tools"
         RAG_T["map_user_intent<br/>RAG 意图映射"]
+        KB_T["search_knowledge_base<br/>知识库检索"]
         API_T["get_orders / search_products<br/>get_order_detail / get_product_detail<br/>get_browse_history"]
         MEM_T["save_user_preference<br/>用户偏好保存"]
         TRF_T["transfer_to_human<br/>check_transfer_status<br/>send_transfer_message"]
@@ -60,6 +66,12 @@ graph TB
         Retriever["HybridRetriever<br/>向量 70% + BM25 30%"]
         Embedding["BGE-M3 Embedding<br/>1024维向量化"]
         IntentMapper["IntentMapper<br/>API 文档意图匹配"]
+        KnowledgeBase["知识库管理<br/>FAQ + 平台政策"]
+    end
+
+    subgraph "Config"
+        RedisConf["Redis 连接池工厂<br/>每 db 独立"]
+        HttpClient["HTTP 连接池<br/>全局单例"]
     end
 
     subgraph "Storage"
@@ -72,13 +84,16 @@ graph TB
         DashScope["阿里云百炼<br/>qwen3.5-plus / qwen-turbo"]
     end
 
-    User --> Chat
+    User --> Sanitizer
+    Sanitizer --> RateLimit
+    RateLimit --> Chat
     User --> Transfer
     Chat --> Agent
     Agent --> STM
     Agent --> LTM
-    Agent --> RAG_T & API_T & MEM_T & TRF_T
+    Agent --> RAG_T & KB_T & API_T & MEM_T & TRF_T
     RAG_T --> Retriever --> ChromaDB
+    KB_T --> KnowledgeBase --> Retriever
     Embedding --> ChromaDB
     API_T --> VinShop
     TRF_T --> Redis
@@ -86,6 +101,8 @@ graph TB
     STM --> Redis
     Agent --> DashScope
     Chat --> Redis
+    HttpClient --> VinShop
+    RedisConf --> Redis
 ```
 
 ## 工作流程
@@ -94,6 +111,7 @@ graph TB
 sequenceDiagram
     participant U as 用户
     participant API as FastAPI
+    participant San as Sanitizer
     participant Handler as chat_handler
     participant Agent as LangChain Agent
     participant RAG as RAG Engine
@@ -101,8 +119,10 @@ sequenceDiagram
     participant VinShop as VinShop 后端
 
     U->>API: POST /api/chat (message + token)
+    API->>San: 输入清洗 + 注入检测
+    San->>API: 校验通过
     API->>API: Token 转发认证获取 user_id
-    API->>API: 检查 Redis 转人工状态
+    API->>API: 检查 Redis 转人工状态 + 速率限制
 
     alt 已转人工
         Handler->>Handler: 处理排队/转发消息
@@ -116,10 +136,14 @@ sequenceDiagram
             Handler-->>U: SSE: {"type":"text","content":"..."}
         end
         Agent->>Agent: 意图识别 (map_user_intent)
-        Agent->>Tools: 调用业务工具
-        Tools->>VinShop: HTTP 调用平台 API
-        VinShop-->>Tools: 返回业务数据
-        Tools-->>Agent: 返回工具结果
+        alt 匹配度 >= 0.5
+            Agent->>Tools: 调用业务工具
+            Tools->>VinShop: HTTP 调用平台 API
+            VinShop-->>Tools: 返回业务数据
+            Tools-->>Agent: 返回工具结果
+        else 匹配度 < 0.5
+            Agent->>Agent: 搜索知识库 (search_knowledge_base)
+        end
         Handler-->>U: SSE: {"type":"done"}
     end
 ```
@@ -165,7 +189,8 @@ graph TB
 | 短期记忆 | Redis (AsyncRedisSaver) | 对话历史，24 小时 TTL |
 | 中文分词 | jieba | BM25 关键词检索 |
 | 关键词检索 | rank-bm25 | BM25Okapi 算法 |
-| HTTP 客户端 | httpx | 异步 API 调用，指数退避重试 |
+| HTTP 客户端 | httpx | 异步 API 调用，全局连接池单例 |
+| Redis 客户端 | redis.asyncio | 工厂模式，每 db 独立连接池 |
 | 包管理 | uv | 现代化 Python 包管理 |
 
 ## 项目结构
@@ -173,42 +198,59 @@ graph TB
 ```
 CustomerService_Agent/
 ├── app/
-│   ├── main.py                     # FastAPI 入口 + 生命周期管理
+│   ├── main.py                         # FastAPI 入口 + 生命周期管理
 │   ├── agents/
-│   │   └── agent.py                # Agent 创建、System Prompt、Middleware
+│   │   └── agent.py                    # Agent 创建、System Prompt、Middleware
+│   ├── config/                         # 配置模块
+│   │   ├── __init__.py
+│   │   ├── redis_conf.py               # Redis 连接池工厂
+│   │   ├── rate_limit.py               # API 速率限制
+│   │   └── http_client.py              # 全局 HTTP 连接池
 │   ├── core/
-│   │   ├── chat_handler.py         # 业务编排层（转人工 + 流式Agent调用）
-│   │   ├── rag.py                  # ChromaDB 向量数据库封装（单例）
-│   │   ├── embedding.py            # BGE-M3 向量化服务（单例）
-│   │   ├── retriever.py            # 混合检索器（向量 + BM25）
-│   │   ├── updater.py              # 向量库更新器
-│   │   └── intent.py               # 意图映射模块
+│   │   ├── __init__.py
+│   │   ├── chat_handler.py             # 业务编排层（转人工 + 流式Agent调用）
+│   │   └── intent.py                   # 意图映射模块
 │   ├── memory/
-│   │   └── long_term.py            # 长期记忆管理器
+│   │   ├── __init__.py
+│   │   └── long_term.py                # 长期记忆管理器
+│   ├── rag/                            # RAG 引擎
+│   │   ├── __init__.py
+│   │   ├── embedding.py                # BGE-M3 向量化服务（单例）
+│   │   ├── knowledge_base.py           # 知识库管理（FAQ + 政策）
+│   │   ├── rag.py                      # ChromaDB 向量数据库封装（单例）
+│   │   ├── retriever.py                # 混合检索器（向量 + BM25）
+│   │   └── updater.py                  # 向量库更新器
 │   ├── routers/
-│   │   ├── chat.py                 # /api/chat 对话接口
-│   │   └── transfer.py             # /api/transfer 转人工接口
+│   │   ├── __init__.py
+│   │   ├── chat.py                     # /api/chat 对话接口
+│   │   └── transfer.py                 # /api/transfer 转人工接口
 │   ├── schemas/
-│   │   ├── chat.py                 # ChatRequest / ChatResponse
-│   │   ├── tools.py                # ProductSearchParams
-│   │   └── transfer.py             # TransferStatusUpdateRequest
+│   │   ├── __init__.py
+│   │   ├── chat.py                     # ChatRequest / ChatResponse
+│   │   ├── tools.py                    # ProductSearchParams
+│   │   └── transfer.py                 # TransferStatusUpdateRequest
 │   ├── tools/
-│   │   ├── rag_tools.py            # RAG 意图映射工具
-│   │   ├── api_tools.py            # 业务工具（订单/商品/浏览历史）
-│   │   ├── memory_tools.py         # 用户偏好保存工具
-│   │   └── transfer_tools.py       # 转人工工具
+│   │   ├── __init__.py
+│   │   ├── rag_tools.py                # RAG 意图映射 + 知识库检索工具
+│   │   ├── api_tools.py                # 业务工具（订单/商品/浏览历史）
+│   │   ├── memory_tools.py             # 用户偏好保存工具
+│   │   └── transfer_tools.py           # 转人工工具
 │   └── utils/
-│       ├── api_caller.py           # 通用 HTTP 调用（httpx + 重试）
-│       ├── auth.py                 # Token 转发认证
-│       ├── message_utils.py        # 工具函数（记忆检索/消息构建/会话ID提取）
-│       ├── summary.py              # 对话摘要生成器
-│       └── transfer_status.py      # Redis 转人工状态管理
+│       ├── __init__.py
+│       ├── api_caller.py               # 通用 HTTP 调用（httpx + 重试）
+│       ├── auth.py                     # Token 转发认证
+│       ├── message_utils.py            # 工具函数（记忆检索/消息构建/会话ID提取）
+│       ├── sanitizer.py                # Prompt 注入防护
+│       ├── summary.py                  # 对话摘要生成器
+│       └── transfer_status.py          # Redis 转人工状态管理
 ├── data/
-│   └── api_docs.json               # API 文档数据（供 RAG 意图映射）
-├── vectordb/                       # ChromaDB 持久化数据
-├── langgraph.json                  # LangGraph 部署配置
-├── pyproject.toml                  # 项目依赖配置
-└── .env                            # 环境变量（不提交到 Git）
+│   ├── api_docs.json                   # API 文档数据（供 RAG 意图映射）
+│   ├── FAQ.md                          # FAQ 知识库文档
+│   └── Platform_Policy.md              # 平台政策知识库文档
+├── vectordb/                           # ChromaDB 持久化数据
+├── langgraph.json                      # LangGraph 部署配置
+├── pyproject.toml                      # 项目依赖配置
+└── .env                                # 环境变量（不提交到 Git）
 ```
 
 ## 环境要求
@@ -246,18 +288,23 @@ pip install -e .
 DASHSCOPE_API_KEY=your_api_key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
+# LLM 模型
+LLM_MODEL=qwen3.5-plus
+
 # 平台后端 API
 BASE_URL=http://your-shop-api-host:port
 USER_API=/api/your-api-endpoint
 TRANSFER_MESSAGE=/api/your-transfer-message-endpoint
 TRANSFER_QUEUE=/api/your-transfer-queue-endpoint/{session_id}
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
-REDIS_TRANSFER_STATUS=redis://localhost:6379/1
+# Redis（统一使用 REDIS_BASE_URL）
+REDIS_BASE_URL=redis://localhost:6379
 
 # ChromaDB
 CHROMADB_PATH=./vectordb
+
+# 速率限制（可选，默认 10 次/分钟）
+RATE_LIMIT_CHAT=10
 
 # LangSmith（可选，用于追踪）
 LANGSMITH_API_KEY=your_langsmith_key
@@ -277,7 +324,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 customerservice-agent
 ```
 
-服务启动后，自动加载 API 文档到向量数据库，输出 `已加载 10 条API文档到向量数据库` 表示成功。
+服务启动后，自动加载 API 文档和知识库到向量数据库，输出以下内容表示成功：
+
+```
+已加载 XX 条API文档到向量数据库
+已加载知识库: FAQ XX 条, 政策 XX 条
+```
 
 ## API 文档
 
@@ -405,6 +457,35 @@ Agent 服务不解码用户 Token，仅做转发。调用 VinShop 后端 API 时
 
 RAG 引擎同时使用向量语义检索（权重 70%）和 BM25 关键词检索（权重 30%），通过 jieba 中文分词提升关键词检索效果。两种检索并发执行，融合得分后返回 Top-N。
 
+### Prompt 注入防护
+
+系统在多个层次实施注入防护：
+
+- **输入层检测**：正则匹配人格篡改（"忽略之前的指令"、"你现在是"）、System Prompt 提取、分隔符注入（`system:`、`<!-- -->`）、工具调用劫持（`/api/admin` 等非法路径）
+- **输入清洗**：移除零宽字符（`\u200b` 等）和控制字符，消除隐藏注入载荷
+- **记忆内容清洗**：对从长期记忆检索到的内容进行二次过滤，移除注入模式后保留完整上下文
+- **API 路径白名单**：从 `api_docs.json` 动态加载合法 API 前缀，`map_user_intent` 工具返回的端点必须通过白名单校验
+- **HTTP 方法限制**：仅允许 GET 和 POST 方法，拒绝其他 HTTP 动词
+- **URL 路径移除**：从用户消息中剥离 `/api/xxx` 路径模式，防止 RAG 检索被路径名污染
+
+### API 速率限制
+
+基于 Redis 的固定窗口算法，按 `user_id` 独立计数：
+
+- 窗口大小：60 秒
+- 默认限制：每分钟 10 次（通过 `RATE_LIMIT_CHAT` 环境变量配置）
+- 超限时返回 HTTP 429
+- 使用 Redis db 2 隔离存储限流键
+
+### 知识库系统
+
+支持两种知识库文档类型的自动解析与检索：
+
+- **FAQ 文档**：按 `### Q1：` 格式分割为 Q&A 对，识别 `## 一、` 分类标题，生成 `faq_{category}_{question_id}` 格式的文档 ID
+- **平台政策文档**：按 `### x.x` 格式分割为条款，识别 `## 一、` 章节标题，生成 `policy_{subsection_id}` 格式的文档 ID
+- **独立集合**：使用 `knowledge_base` 集合存储，与意图映射的 `api_intents` 集合隔离
+- **统一检索**：复用 `HybridRetriever` 混合检索器，支持向量 + BM25 融合排序
+
 ### 异步优先
 
 ChromaDB 的同步 API 通过 `asyncio.to_thread` 包装为异步调用，避免阻塞 FastAPI 事件循环。
@@ -413,6 +494,24 @@ ChromaDB 的同步 API 通过 `asyncio.to_thread` 包装为异步调用，避免
 
 - **trim_message_middleware**：按轮次裁剪对话历史，保留最近 3 轮，控制 Token 消耗
 - **LongTermMemoryMiddleware**：每 3 轮对话自动生成摘要并保存到 ChromaDB，后台异步执行不阻塞主流程
+
+### HTTP 连接池
+
+全局共享 `httpx.AsyncClient` 单例，统一管理出站 HTTP 连接：
+
+- 最大连接数：100
+- 保持活跃连接数：20
+- 保持活跃超时：30 秒
+- 请求超时：30 秒
+- 应用关闭时统一释放连接池
+
+### Redis 连接池工厂
+
+`app/config/redis_conf.py` 统一管理所有 Redis 连接：
+
+- 每个 db 编号独立连接池，互不干扰（db 0: 短期记忆，db 1: 转人工状态，db 2: 速率限制）
+- 应用关闭时通过 `close_all()` 统一释放所有连接
+- 工厂函数 `get_redis(db)` 返回单例客户端
 
 ## License
 

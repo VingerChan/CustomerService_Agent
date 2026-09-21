@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import httpx
 import asyncio
 from app.utils.sanitizer import validate_api_path, validate_http_method
+from app.config.http_client import get_http_client
 
 load_dotenv()
 BASE_URL = os.getenv("BASE_URL")
@@ -29,19 +30,19 @@ async def call_api(endpoint: str, token: str, method: str = 'GET', params: dict 
         raise ValueError(f"endpoint必须以'/'开头：{endpoint}")
     url = f"{BASE_URL}{endpoint}"
     headers = {'Authorization': f"Bearer {token}"}
+    client = get_http_client()
     # 重试机制
     last_exception = None
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient() as client:
-                if method.upper() == 'GET':
-                    response = await client.get(url, headers=headers, params=params)
-                elif method.upper() == 'POST':
-                    response = await client.post(url, headers=headers, json=params)
-                else:
-                    raise ValueError(f"不支持的HTTP方法：{method}")
-                response.raise_for_status()    # HTTP状态码非2xx时抛出异常
-                return response.json()
+            if method.upper() == 'GET':
+                response = await client.get(url, headers=headers, params=params)
+            elif method.upper() == 'POST':
+                response = await client.post(url, headers=headers, json=params)
+            else:
+                raise ValueError(f"不支持的HTTP方法：{method}")
+            response.raise_for_status()    # HTTP状态码非2xx时抛出异常
+            return response.json()
         except httpx.HTTPStatusError as e:
             last_exception = e
             if e.response.status_code < 500:    # 客户端错误不重试

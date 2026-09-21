@@ -13,6 +13,7 @@ from app.memory.long_term import get_vector_memory
 from app.routers.transfer import router as transfer_router
 from app.rag.knowledge_base import get_knowledge_base
 from app.config.redis_conf import close_all
+from app.config.http_client import close_http_client
 
 # 全局checkpointer实例，供chat.py使用
 _checkpointer = None
@@ -61,6 +62,8 @@ async def lifespan(app: FastAPI):
         yield    # 应用开始接收请求
         # 关闭Redis连接池
         await close_all()
+        # 关闭HTTP连接池
+        await close_http_client()
 app = FastAPI(lifespan=lifespan)
 
 # 注册路由
