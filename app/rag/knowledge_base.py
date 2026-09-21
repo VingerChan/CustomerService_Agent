@@ -30,12 +30,19 @@ class KnowledgeBase:
         pattern = r'(### Q\d+[：:][^\n]+)'
         parts = re.split(pattern, content)
         current_category = '常见问题'
-        # 跳过目录部分
+        category_index = 0
+        # 处理parts[0]中可能存在的分类标题(第一个分类在第一个### Q之前)
+        cat_match = re.search(r'## [一二三四五六七八九十]+[、.]', parts[0])
+        if cat_match:
+            current_category = cat_match.group(0).strip().lstrip('#').strip()
+            category_index = 1
         i = 1
         while i < len(parts):
             # 检测是否分类标题(如## 一、账户相关)
-            if re.match(r'## [一二三四五六七八九十]+[、.]', parts[i]):
-                current_category = parts[i].strip().lstrip('#').strip()
+            cat_match = re.search(r'## [一二三四五六七八九十]+[、.]', parts[i])
+            if cat_match:
+                current_category = cat_match.group(0).strip().lstrip('#').strip()
+                category_index += 1
                 i += 1
                 continue    # 跳过本次，开始下一次循环
             # 匹配Q标题，()为捕获组
@@ -60,7 +67,7 @@ class KnowledgeBase:
                         "question_id": f"Q{question_id}",
                         "question": question_title
                     },
-                    doc_id=f"faq_q{question_id}"
+                    doc_id=f"faq_{category_index}_q{question_id}"
                 ))
             i += 1
         return chunks
@@ -114,16 +121,18 @@ class KnowledgeBase:
         :return: 加载统计信息 {"faq": FAQ块数量, "policy": 政策快数量}
         """
         stats = {"faq": 0, "policy": 0}
+        all_documents = []
+        all_metadatas = []
+        all_ids = []
         # 读取并解析FAQ
         try:
             with open(faq_path, 'r', encoding='utf-8') as f:
                 faq_content = f.read()
             faq_chunks = self.parse_faq(faq_content)    # 解析FAQ文档
             if faq_chunks:
-                documents = [chunk.content for chunk in faq_chunks]
-                metadatas = [chunk.metadata for chunk in faq_chunks]
-                ids = [chunk.doc_id for chunk in faq_chunks]
-                await self.updater.full_update(self.COLLECTION_NAME, documents, metadatas, ids)
+                all_documents.extend([chunk.content for chunk in faq_chunks])
+                all_metadatas.extend([chunk.metadata for chunk in faq_chunks])
+                all_ids.extend([chunk.doc_id for chunk in faq_chunks])
                 stats['faq'] = len(faq_chunks)
         except Exception as e:
             print(f"加载FAQ文档失败：{e}")
@@ -133,13 +142,15 @@ class KnowledgeBase:
                 policy_content = f.read()
             policy_chunks = self.parse_policy(policy_content)
             if policy_chunks:
-                documents = [chunk.content for chunk in policy_chunks]
-                metadatas = [chunk.metadata for chunk in policy_chunks]
-                ids = [chunk.doc_id for chunk in policy_chunks]
-                await self.updater.full_update(self.COLLECTION_NAME, documents, metadatas, ids)
+                all_documents.extend([chunk.content for chunk in policy_chunks])
+                all_metadatas.extend([chunk.metadata for chunk in policy_chunks])
+                all_ids.extend([chunk.doc_id for chunk in policy_chunks])
                 stats['policy'] = len(policy_chunks)
         except Exception as e:
             print(f"加载政策文档失败：{e}")
+        # 合并后做一次full_update
+        if all_ids:
+            await self.updater.full_update(self.COLLECTION_NAME, all_documents, all_metadatas, all_ids)
         return stats
 
     async def search(self, query: str, n_results: int = 3) -> dict:
