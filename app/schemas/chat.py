@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., description='用户输入的消息')
+    message: str = Field(..., min_length=1, max_length=500, description='用户输入的消息')
     token: str = Field(..., description='用户认证token，用于调用平台API获取用户信息')
 
 class ChatResponse(BaseModel):

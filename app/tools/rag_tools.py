@@ -1,6 +1,8 @@
 from langchain.tools import tool
 from app.core.intent import get_intent_mapper
 from app.rag.knowledge_base import get_knowledge_base
+from app.utils.sanitizer import strip_urls_from_message, validate_api_path, validate_http_method
+
 
 @tool
 async def map_user_intent(query: str) -> str:
@@ -16,10 +18,26 @@ async def map_user_intent(query: str) -> str:
     """
     intent_mapper = get_intent_mapper()
     try:
-        endpoints = await intent_mapper.get_api_endpoints(query, n_results=3)
+        # === 防护：移除用户消息中的API路径，防止RAG被路径名污染 ===
+        clean_query = strip_urls_from_message(query)
+        if not clean_query:
+            clean_query = query
+
+        endpoints = await intent_mapper.get_api_endpoints(clean_query, n_results=3)
         if endpoints:
-            api_list = []
+            # === 防护：过滤不在白名单内的API路径 ===
+            safe_endpoints = []
             for endpoint in endpoints:
+                ep = endpoint['endpoint']
+                method = endpoint['method']
+                if validate_api_path(ep) and validate_http_method(method):
+                    safe_endpoints.append(endpoint)
+
+            if not safe_endpoints:
+                return "未匹配到相关API端点"
+
+            api_list = []
+            for endpoint in safe_endpoints:
                 api_list.append(
                     f"- {endpoint['id']}: {endpoint['method']} {endpoint['endpoint']} "
                     f"(匹配度: {endpoint['score']:.2f})\n  描述: {endpoint['description']}"

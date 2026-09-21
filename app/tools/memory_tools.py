@@ -1,6 +1,7 @@
 from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
 from app.memory.long_term import get_vector_memory
+from app.utils.sanitizer import sanitize_memory_content
 
 @tool
 async def save_user_preference(preference_key: str, preference_value: str, config: RunnableConfig) -> str:
@@ -22,6 +23,10 @@ async def save_user_preference(preference_key: str, preference_value: str, confi
     if not user_id:
         return "无法获取用户信息，偏好保存失败"
     try:
+        # === 防护：清洗偏好键和值，移除注入模式 ===
+        preference_key = sanitize_memory_content(preference_key)
+        preference_value = sanitize_memory_content(preference_value)
+
         vector_memory = get_vector_memory()
         await vector_memory.update_user_preference(
             user_id=user_id,

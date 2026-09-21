@@ -108,7 +108,7 @@ async def search_products(api: str, method: str, params: ProductSearchParams, co
     try:
         # 将模型实例转换为查询参数字典，跳过使用默认值的字段。
         query_params = params.model_dump(exclude_unset=True)
-        result = await call_api(api, token=token, params=query_params)
+        result = await call_api(api, token=token, params=query_params, method=method)
         skus = result.get('skus', [])
         if not skus:
             return "未找到相关商品"
@@ -141,7 +141,7 @@ async def get_order_detail(api: str, method: str, config: RunnableConfig) -> str
     """
     token = config.get('configurable', {}).get('token')
     try:
-        result = await call_api(api, token=token)
+        result = await call_api(api, token=token, method=method)
 
         order = result
         if not order or 'order_id' not in order:

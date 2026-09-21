@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import httpx
 import asyncio
+from app.utils.sanitizer import validate_api_path, validate_http_method
 
 load_dotenv()
 BASE_URL = os.getenv("BASE_URL")
@@ -17,6 +18,12 @@ async def call_api(endpoint: str, token: str, method: str = 'GET', params: dict 
     :return: API返回的JSON结果
     :raises: ValueError, httpx.HTTPStatusError, Exception
     """
+    # === 防护：路径白名单校验 ===
+    if not validate_api_path(endpoint):
+        raise ValueError(f"不允许的API路径：{endpoint}")
+    if not validate_http_method(method):
+        raise ValueError(f"不允许的HTTP方法：{method}")
+
     # 参数验证
     if not endpoint.startswith('/'):
         raise ValueError(f"endpoint必须以'/'开头：{endpoint}")
